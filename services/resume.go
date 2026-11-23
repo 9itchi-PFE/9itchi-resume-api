@@ -1,87 +1,409 @@
 package services
 
 import (
+	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"io"
+	"net/http"
+	"path/filepath"
+	"strings"
+	"unicode/utf8"
 
+	"9itchi-resume-api/core"
 	"9itchi-resume-api/models"
 	"9itchi-resume-api/models/api"
+	"9itchi-resume-api/models/db"
+	"9itchi-resume-api/models/mapping"
 	"9itchi-resume-api/repositories"
+	"9itchi-resume-api/utils"
+
+	"go.uber.org/zap"
+)
+
+const (
+	defaultPageSize = 20
+	maxPageSize     = 100
+
+	contentTypePDF  = "application/pdf"
+	contentTypeDOCX = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 )
 
 // ResumeService holds all business logic for resume. Handlers stay thin.
 type ResumeService interface {
-	// POST /resumes/upload: upload PDF/DOCX, async AI parse
-	UploadResume(ctx context.Context, userID string) (any, *models.ApiError)
+	// POST /resumes/upload: store the PDF/DOCX as the original and create an empty resume
+	UploadResume(ctx context.Context, userID string, filename string, size int64, r io.Reader) (*api.UploadResumeResponse, *models.ApiError)
 	// POST /resumes: create resume from structured content
-	CreateResume(ctx context.Context, userID string, req api.CreateResumeRequest) (any, *models.ApiError)
-	// GET /resumes: list own resumes
-	ListResumes(ctx context.Context, userID string) (any, *models.ApiError)
+	CreateResume(ctx context.Context, userID string, req api.CreateResumeRequest) (*api.ResumeResponse, *models.ApiError)
+	// GET /resumes: list own resumes (no content), page/pageSize <= 0 use defaults
+	ListResumes(ctx context.Context, userID string, page, pageSize int) (*api.ListResumesResponse, *models.ApiError)
 	// GET /resumes/:id: resume detail
-	GetResume(ctx context.Context, userID string, id string) (any, *models.ApiError)
+	GetResume(ctx context.Context, userID string, id string) (*api.ResumeResponse, *models.ApiError)
 	// PUT /resumes/:id: edit sections / switch template
-	UpdateResume(ctx context.Context, userID string, id string, req api.UpdateResumeRequest) (any, *models.ApiError)
+	UpdateResume(ctx context.Context, userID string, id string, req api.UpdateResumeRequest) (*api.ResumeResponse, *models.ApiError)
 	// DELETE /resumes/:id: delete resume
-	DeleteResume(ctx context.Context, userID string, id string) (any, *models.ApiError)
-	// GET /resumes/:id/versions: list saved versions
-	ListVersions(ctx context.Context, userID string, id string) (any, *models.ApiError)
+	DeleteResume(ctx context.Context, userID string, id string) *models.ApiError
+	// GET /resumes/:id/versions: list saved versions (no content)
+	ListVersions(ctx context.Context, userID string, id string) (*api.ListVersionsResponse, *models.ApiError)
 	// POST /resumes/:id/versions: snapshot a version
-	CreateVersion(ctx context.Context, userID string, id string) (any, *models.ApiError)
-	// POST /resumes/:id/export: export PDF or DOCX
-	ExportResume(ctx context.Context, userID string, id string, req api.ExportResumeRequest) (any, *models.ApiError)
+	CreateVersion(ctx context.Context, userID string, id string) (*api.VersionResponse, *models.ApiError)
+	// POST /resumes/:id/export: export PDF (docx unsupported)
+	ExportResume(ctx context.Context, userID string, id string, req api.ExportResumeRequest) (*api.FileResponse, *models.ApiError)
 	// POST /resumes/:id/ats-check: ATS score and suggestions
 	ATSCheck(ctx context.Context, userID string, id string) (any, *models.ApiError)
-	// GET /internal/resumes/:id/pdf: latest exported PDF bytes (email attachments)
-	InternalResumePDF(ctx context.Context, id string) (any, *models.ApiError)
+	// GET /internal/resumes/:id/pdf: latest exported PDF bytes (email attachments), no user scoping
+	InternalResumePDF(ctx context.Context, id string) (*api.FileContent, *models.ApiError)
 }
 
 type resumeService struct {
-	repo repositories.ResumeRepository
+	repo      repositories.ResumeRepository
+	templates repositories.TemplateRepository
+	files     repositories.FileRepository
+	tx        repositories.Transactor
+	exporters map[string]core.Exporter
 }
 
-func NewResumeService(repo repositories.ResumeRepository) ResumeService {
-	return &resumeService{repo: repo}
+func NewResumeService(
+	repo repositories.ResumeRepository,
+	templates repositories.TemplateRepository,
+	files repositories.FileRepository,
+	tx repositories.Transactor,
+	exporters map[string]core.Exporter,
+) ResumeService {
+	return &resumeService{repo: repo, templates: templates, files: files, tx: tx, exporters: exporters}
 }
 
-func (s *resumeService) UploadResume(_ context.Context, _ string) (any, *models.ApiError) {
-	return nil, models.NotImplemented()
+// encodeContent validates and serialises content for the jsonb column.
+func encodeContent(c api.ResumeContent) ([]byte, *models.ApiError) {
+	raw, err := json.Marshal(mapping.NormalizeContent(c))
+	if err != nil {
+		return nil, newError(http.StatusBadRequest, "invalid content")
+	}
+	if len(raw) > api.MaxContentBytes {
+		return nil, newError(http.StatusBadRequest, "content too large (max 200 KB)")
+	}
+	// PostgreSQL rejects NUL characters in jsonb strings.
+	if bytes.Contains(raw, []byte(`\u0000`)) {
+		return nil, newError(http.StatusBadRequest, "content contains invalid characters")
+	}
+	return raw, nil
 }
 
-func (s *resumeService) CreateResume(_ context.Context, _ string, _ api.CreateResumeRequest) (any, *models.ApiError) {
-	return nil, models.NotImplemented()
+func validateTitle(t string) *models.ApiError {
+	if strings.TrimSpace(t) == "" {
+		return newError(http.StatusBadRequest, "title is required")
+	}
+	if utf8.RuneCountInString(t) > api.MaxTitleLen {
+		return newError(http.StatusBadRequest, "title too long (max 200 characters)")
+	}
+	if !utf8.ValidString(t) || strings.ContainsRune(t, 0) {
+		return newError(http.StatusBadRequest, "title contains invalid characters")
+	}
+	return nil
 }
 
-func (s *resumeService) ListResumes(_ context.Context, _ string) (any, *models.ApiError) {
-	return nil, models.NotImplemented()
+// checkTemplate verifies that an optional template id exists and is active.
+func (s *resumeService) checkTemplate(ctx context.Context, id *string) *models.ApiError {
+	if id == nil {
+		return nil
+	}
+	if !isUUID(*id) {
+		return newError(http.StatusBadRequest, "invalid template id")
+	}
+	t, err := s.templates.Get(ctx, *id)
+	if errors.Is(err, repositories.ErrNotFound) {
+		return newError(http.StatusBadRequest, "template not found")
+	}
+	if err != nil {
+		return repoError(err, "template not found")
+	}
+	if !t.Active {
+		return newError(http.StatusBadRequest, "template is not active")
+	}
+	return nil
 }
 
-func (s *resumeService) GetResume(_ context.Context, _ string, _ string) (any, *models.ApiError) {
-	return nil, models.NotImplemented()
+func (s *resumeService) UploadResume(ctx context.Context, userID string, filename string, size int64, r io.Reader) (*api.UploadResumeResponse, *models.ApiError) {
+	if size > api.MaxUploadBytes {
+		return nil, newError(http.StatusRequestEntityTooLarge, "file too large (max 10 MB)")
+	}
+	if size == 0 {
+		return nil, newError(http.StatusBadRequest, "file is empty")
+	}
+	safeName := sanitizeFilename(filename)
+	format, contentType, apiErr := detectUpload(safeName)
+	if apiErr != nil {
+		return nil, apiErr
+	}
+	// Read at most limit+1 bytes: the declared size cannot be trusted.
+	data, err := io.ReadAll(io.LimitReader(r, api.MaxUploadBytes+1))
+	if err != nil {
+		return nil, newError(http.StatusBadRequest, "could not read file")
+	}
+	if len(data) > api.MaxUploadBytes {
+		return nil, newError(http.StatusRequestEntityTooLarge, "file too large (max 10 MB)")
+	}
+	if len(data) == 0 {
+		return nil, newError(http.StatusBadRequest, "file is empty")
+	}
+	if !hasMagic(format, data) {
+		return nil, newError(http.StatusBadRequest, "file content does not match its type")
+	}
+
+	title := strings.TrimSpace(strings.TrimSuffix(safeName, filepath.Ext(safeName)))
+	if title == "" {
+		title = "Untitled"
+	}
+	if r := []rune(title); len(r) > api.MaxTitleLen {
+		title = string(r[:api.MaxTitleLen])
+	}
+	empty, apiErr := encodeContent(api.ResumeContent{})
+	if apiErr != nil {
+		return nil, apiErr
+	}
+	sum := sha256.Sum256(data)
+
+	var resume *db.Resume
+	var meta *db.ResumeFileMeta
+	err = s.tx.WithTx(ctx, func(ctx context.Context) error {
+		var err error
+		if resume, err = s.repo.Create(ctx, userID, title, nil, empty); err != nil {
+			return err
+		}
+		meta, err = s.files.Create(ctx, &db.ResumeFile{
+			ResumeID:    resume.ID,
+			Kind:        "original",
+			Format:      format,
+			Filename:    safeName,
+			ContentType: contentType,
+			SizeBytes:   int64(len(data)),
+			SHA256:      hex.EncodeToString(sum[:]),
+			Data:        data,
+		})
+		return err
+	})
+	if err != nil {
+		return nil, repoError(err, "resume not found")
+	}
+	// AI SEAM: once ai-api parsing is wired, trigger it here after the transaction commits
+	// (async, using resume.ID and the stored original) and fill resumes.content from the result.
+	return &api.UploadResumeResponse{
+		Resume: mapping.ResumeToResponse(resume),
+		File:   mapping.FileMetaToResponse(meta),
+	}, nil
 }
 
-func (s *resumeService) UpdateResume(_ context.Context, _ string, _ string, _ api.UpdateResumeRequest) (any, *models.ApiError) {
-	return nil, models.NotImplemented()
+// detectUpload validates the extension and returns the format and content type.
+func detectUpload(name string) (format, contentType string, apiErr *models.ApiError) {
+	switch strings.ToLower(filepath.Ext(name)) {
+	case ".pdf":
+		return "pdf", contentTypePDF, nil
+	case ".docx":
+		return "docx", contentTypeDOCX, nil
+	}
+	return "", "", newError(http.StatusBadRequest, "only PDF or DOCX files are accepted")
 }
 
-func (s *resumeService) DeleteResume(_ context.Context, _ string, _ string) (any, *models.ApiError) {
-	return nil, models.NotImplemented()
+// hasMagic checks the leading bytes: "%PDF-" for pdf, a zip header ("PK") for docx.
+func hasMagic(format string, data []byte) bool {
+	switch format {
+	case "pdf":
+		return bytes.HasPrefix(data, []byte("%PDF-"))
+	case "docx":
+		return bytes.HasPrefix(data, []byte("PK\x03\x04"))
+	}
+	return false
 }
 
-func (s *resumeService) ListVersions(_ context.Context, _ string, _ string) (any, *models.ApiError) {
-	return nil, models.NotImplemented()
+func (s *resumeService) CreateResume(ctx context.Context, userID string, req api.CreateResumeRequest) (*api.ResumeResponse, *models.ApiError) {
+	if apiErr := validateTitle(req.Title); apiErr != nil {
+		return nil, apiErr
+	}
+	content, apiErr := encodeContent(req.Content)
+	if apiErr != nil {
+		return nil, apiErr
+	}
+	if apiErr := s.checkTemplate(ctx, req.TemplateID); apiErr != nil {
+		return nil, apiErr
+	}
+	res, err := s.repo.Create(ctx, userID, req.Title, req.TemplateID, content)
+	if err != nil {
+		return nil, repoError(err, "resume not found")
+	}
+	resp := mapping.ResumeToResponse(res)
+	return &resp, nil
 }
 
-func (s *resumeService) CreateVersion(_ context.Context, _ string, _ string) (any, *models.ApiError) {
-	return nil, models.NotImplemented()
+func (s *resumeService) ListResumes(ctx context.Context, userID string, page, pageSize int) (*api.ListResumesResponse, *models.ApiError) {
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 {
+		pageSize = defaultPageSize
+	}
+	if pageSize > maxPageSize {
+		pageSize = maxPageSize
+	}
+	rows, total, err := s.repo.List(ctx, userID, pageSize, (page-1)*pageSize)
+	if err != nil {
+		return nil, repoError(err, "resume not found")
+	}
+	out := &api.ListResumesResponse{
+		Items: make([]api.ResumeListItem, 0, len(rows)), Total: total, Page: page, PageSize: pageSize,
+	}
+	for _, r := range rows {
+		out.Items = append(out.Items, mapping.ResumeSummaryToItem(r))
+	}
+	return out, nil
 }
 
-func (s *resumeService) ExportResume(_ context.Context, _ string, _ string, _ api.ExportResumeRequest) (any, *models.ApiError) {
-	return nil, models.NotImplemented()
+func (s *resumeService) GetResume(ctx context.Context, userID string, id string) (*api.ResumeResponse, *models.ApiError) {
+	if !isUUID(id) {
+		return nil, newError(http.StatusBadRequest, "invalid resume id")
+	}
+	res, err := s.repo.Get(ctx, userID, id)
+	if err != nil {
+		return nil, repoError(err, "resume not found")
+	}
+	resp := mapping.ResumeToResponse(res)
+	return &resp, nil
+}
+
+func (s *resumeService) UpdateResume(ctx context.Context, userID string, id string, req api.UpdateResumeRequest) (*api.ResumeResponse, *models.ApiError) {
+	if !isUUID(id) {
+		return nil, newError(http.StatusBadRequest, "invalid resume id")
+	}
+	if req.Title != nil {
+		if apiErr := validateTitle(*req.Title); apiErr != nil {
+			return nil, apiErr
+		}
+	}
+	var content []byte
+	if req.Content != nil {
+		var apiErr *models.ApiError
+		if content, apiErr = encodeContent(*req.Content); apiErr != nil {
+			return nil, apiErr
+		}
+	}
+	if apiErr := s.checkTemplate(ctx, req.TemplateID); apiErr != nil {
+		return nil, apiErr
+	}
+	// Content is only written when provided, so a template switch never alters it.
+	res, err := s.repo.Update(ctx, userID, id, req.Title, req.TemplateID, content)
+	if err != nil {
+		return nil, repoError(err, "resume not found")
+	}
+	resp := mapping.ResumeToResponse(res)
+	return &resp, nil
+}
+
+func (s *resumeService) DeleteResume(ctx context.Context, userID string, id string) *models.ApiError {
+	if !isUUID(id) {
+		return newError(http.StatusBadRequest, "invalid resume id")
+	}
+	if err := s.repo.Delete(ctx, userID, id); err != nil {
+		return repoError(err, "resume not found")
+	}
+	return nil
+}
+
+func (s *resumeService) ListVersions(ctx context.Context, userID string, id string) (*api.ListVersionsResponse, *models.ApiError) {
+	if !isUUID(id) {
+		return nil, newError(http.StatusBadRequest, "invalid resume id")
+	}
+	if err := s.repo.Exists(ctx, userID, id); err != nil {
+		return nil, repoError(err, "resume not found")
+	}
+	rows, err := s.repo.ListVersions(ctx, id)
+	if err != nil {
+		return nil, repoError(err, "resume not found")
+	}
+	out := &api.ListVersionsResponse{Items: make([]api.VersionResponse, 0, len(rows))}
+	for _, v := range rows {
+		out.Items = append(out.Items, mapping.VersionToResponse(v))
+	}
+	return out, nil
+}
+
+func (s *resumeService) CreateVersion(ctx context.Context, userID string, id string) (*api.VersionResponse, *models.ApiError) {
+	if !isUUID(id) {
+		return nil, newError(http.StatusBadRequest, "invalid resume id")
+	}
+	var meta *db.ResumeVersionMeta
+	err := s.tx.WithTx(ctx, func(ctx context.Context) error {
+		versionNo, content, err := s.repo.BumpVersion(ctx, userID, id)
+		if err != nil {
+			return err
+		}
+		meta, err = s.repo.InsertVersion(ctx, id, versionNo, content)
+		return err
+	})
+	if err != nil {
+		return nil, repoError(err, "resume not found")
+	}
+	resp := mapping.VersionToResponse(*meta)
+	return &resp, nil
+}
+
+func (s *resumeService) ExportResume(ctx context.Context, userID string, id string, req api.ExportResumeRequest) (*api.FileResponse, *models.ApiError) {
+	if !isUUID(id) {
+		return nil, newError(http.StatusBadRequest, "invalid resume id")
+	}
+	format := strings.ToLower(strings.TrimSpace(req.Format))
+	if format == "docx" {
+		return nil, newError(http.StatusBadRequest, "docx export is not supported yet, use pdf")
+	}
+	exporter, ok := s.exporters[format]
+	if !ok {
+		return nil, newError(http.StatusBadRequest, "unsupported export format, use pdf")
+	}
+	res, err := s.repo.Get(ctx, userID, id)
+	if err != nil {
+		return nil, repoError(err, "resume not found")
+	}
+	layout := ""
+	if res.TemplateID != nil {
+		if t, err := s.templates.Get(ctx, *res.TemplateID); err == nil {
+			layout = t.Layout
+		}
+	}
+	data, err := exporter.Render(ctx, mapping.ParseContent(res.Content), layout)
+	if err != nil {
+		utils.Logger.Error("export render failed", zap.Error(err))
+		return nil, newError(http.StatusInternalServerError, "export failed")
+	}
+	sum := sha256.Sum256(data)
+	meta, err := s.files.Create(ctx, &db.ResumeFile{
+		ResumeID:    res.ID,
+		Kind:        "export",
+		Format:      format,
+		Filename:    sanitizeFilename(res.Title) + "." + format,
+		ContentType: contentTypePDF,
+		SizeBytes:   int64(len(data)),
+		SHA256:      hex.EncodeToString(sum[:]),
+		Data:        data,
+	})
+	if err != nil {
+		return nil, repoError(err, "resume not found")
+	}
+	resp := mapping.FileMetaToResponse(meta)
+	return &resp, nil
 }
 
 func (s *resumeService) ATSCheck(_ context.Context, _ string, _ string) (any, *models.ApiError) {
 	return nil, models.NotImplemented()
 }
 
-func (s *resumeService) InternalResumePDF(_ context.Context, _ string) (any, *models.ApiError) {
-	return nil, models.NotImplemented()
+func (s *resumeService) InternalResumePDF(ctx context.Context, id string) (*api.FileContent, *models.ApiError) {
+	if !isUUID(id) {
+		return nil, newError(http.StatusBadRequest, "invalid resume id")
+	}
+	f, err := s.files.LatestExport(ctx, id, "pdf")
+	if err != nil {
+		return nil, repoError(err, "no exported pdf")
+	}
+	return &api.FileContent{Filename: f.Filename, ContentType: f.ContentType, Data: f.Data}, nil
 }

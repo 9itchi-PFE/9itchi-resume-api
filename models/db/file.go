@@ -16,3 +16,16 @@ type ResumeFile struct {
 	CreatedAt   time.Time `db:"created_at" json:"created_at"`
 	UpdatedAt   time.Time `db:"updated_at" json:"updated_at"`
 }
+
+// ResumeFileMeta is a resume_files row without the data column (list and metadata queries).
+type ResumeFileMeta struct {
+	ID          string    `db:"id"`
+	ResumeID    string    `db:"resume_id"`
+	Kind        string    `db:"kind"`
+	Format      string    `db:"format"`
+	Filename    string    `db:"filename"`
+	ContentType string    `db:"content_type"`
+	SizeBytes   int64     `db:"size_bytes"`
+	SHA256      string    `db:"sha256"`
+	CreatedAt   time.Time `db:"created_at"`
+}

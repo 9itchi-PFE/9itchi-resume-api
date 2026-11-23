@@ -1,7 +1,9 @@
 package handlers
 
 import (
+	"errors"
 	"net/http"
+	"strconv"
 
 	"9itchi-resume-api/models"
 	"9itchi-resume-api/models/api"
@@ -10,15 +12,36 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// UploadResume: POST /resumes/upload (user) upload PDF/DOCX, async AI parse.
+// multipartOverhead is allowed on top of the file limit for boundaries and headers.
+const multipartOverhead = 1 << 20
+
+// UploadResume: POST /resumes/upload (user) multipart field "file", PDF or DOCX, max 10 MB.
 func UploadResume(svc services.ResumeService) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		result, apiErr := svc.UploadResume(c.Request.Context(), c.GetString("user_id"))
+		// Cap the request body before the multipart parser reads anything.
+		c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, api.MaxUploadBytes+multipartOverhead)
+		header, err := c.FormFile("file")
+		if err != nil {
+			var tooLarge *http.MaxBytesError
+			if errors.As(err, &tooLarge) {
+				models.FormatError(c, &models.ApiError{Code: http.StatusRequestEntityTooLarge, Error: errors.New("file too large (max 10 MB)")})
+				return
+			}
+			models.FormatError(c, &models.ApiError{Code: http.StatusBadRequest, Error: errors.New("multipart field 'file' is required")})
+			return
+		}
+		f, err := header.Open()
+		if err != nil {
+			models.FormatError(c, &models.ApiError{Code: http.StatusBadRequest, Error: errors.New("could not read file")})
+			return
+		}
+		defer f.Close()
+		result, apiErr := svc.UploadResume(c.Request.Context(), c.GetString("user_id"), header.Filename, header.Size, f)
 		if apiErr != nil {
 			models.FormatError(c, apiErr)
 			return
 		}
-		c.JSON(http.StatusOK, result)
+		c.JSON(http.StatusCreated, result)
 	}
 }
 
@@ -39,10 +62,12 @@ func CreateResume(svc services.ResumeService) gin.HandlerFunc {
 	}
 }
 
-// ListResumes: GET /resumes (user) list own resumes.
+// ListResumes: GET /resumes (user) list own resumes, paginated (page, page_size).
 func ListResumes(svc services.ResumeService) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		result, apiErr := svc.ListResumes(c.Request.Context(), c.GetString("user_id"))
+		page, _ := strconv.Atoi(c.Query("page"))
+		pageSize, _ := strconv.Atoi(c.Query("page_size"))
+		result, apiErr := svc.ListResumes(c.Request.Context(), c.GetString("user_id"), page, pageSize)
 		if apiErr != nil {
 			models.FormatError(c, apiErr)
 			return
@@ -83,12 +108,11 @@ func UpdateResume(svc services.ResumeService) gin.HandlerFunc {
 // DeleteResume: DELETE /resumes/:id (user) delete resume.
 func DeleteResume(svc services.ResumeService) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		result, apiErr := svc.DeleteResume(c.Request.Context(), c.GetString("user_id"), c.Param("id"))
-		if apiErr != nil {
+		if apiErr := svc.DeleteResume(c.Request.Context(), c.GetString("user_id"), c.Param("id")); apiErr != nil {
 			models.FormatError(c, apiErr)
 			return
 		}
-		c.JSON(http.StatusOK, result)
+		c.Status(http.StatusNoContent)
 	}
 }
 
@@ -112,11 +136,11 @@ func CreateVersion(svc services.ResumeService) gin.HandlerFunc {
 			models.FormatError(c, apiErr)
 			return
 		}
-		c.JSON(http.StatusOK, result)
+		c.JSON(http.StatusCreated, result)
 	}
 }
 
-// ExportResume: POST /resumes/:id/export (user) export PDF or DOCX.
+// ExportResume: POST /resumes/:id/export (user) export PDF (docx is unsupported).
 func ExportResume(svc services.ResumeService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req api.ExportResumeRequest
@@ -129,11 +153,11 @@ func ExportResume(svc services.ResumeService) gin.HandlerFunc {
 			models.FormatError(c, apiErr)
 			return
 		}
-		c.JSON(http.StatusOK, result)
+		c.JSON(http.StatusCreated, result)
 	}
 }
 
-// ATSCheck: POST /resumes/:id/ats-check (user) ATS score and suggestions.
+// ATSCheck: POST /resumes/:id/ats-check (user) ATS score and suggestions. Not implemented yet.
 func ATSCheck(svc services.ResumeService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		result, apiErr := svc.ATSCheck(c.Request.Context(), c.GetString("user_id"), c.Param("id"))
@@ -153,6 +177,6 @@ func InternalResumePDF(svc services.ResumeService) gin.HandlerFunc {
 			models.FormatError(c, apiErr)
 			return
 		}
-		c.JSON(http.StatusOK, result)
+		sendFile(c, result)
 	}
 }

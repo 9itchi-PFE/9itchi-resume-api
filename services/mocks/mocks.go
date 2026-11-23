@@ -1,0 +1,179 @@
+// Package mocks holds hand-written repository mocks. Set the *Fn fields a test needs;
+// an unset method returns zero values.
+package mocks
+
+import (
+	"context"
+
+	"9itchi-resume-api/models/db"
+	"9itchi-resume-api/repositories"
+)
+
+// Tx runs the function directly (no real transaction).
+type Tx struct{ Err error }
+
+func (t Tx) WithTx(ctx context.Context, fn func(ctx context.Context) error) error {
+	if t.Err != nil {
+		return t.Err
+	}
+	return fn(ctx)
+}
+
+type ResumeRepo struct {
+	CreateFn        func(ctx context.Context, userID, title string, templateID *string, content []byte) (*db.Resume, error)
+	GetFn           func(ctx context.Context, userID, id string) (*db.Resume, error)
+	ExistsFn        func(ctx context.Context, userID, id string) error
+	ListFn          func(ctx context.Context, userID string, limit, offset int) ([]db.ResumeSummary, int, error)
+	UpdateFn        func(ctx context.Context, userID, id string, title, templateID *string, content []byte) (*db.Resume, error)
+	DeleteFn        func(ctx context.Context, userID, id string) error
+	BumpVersionFn   func(ctx context.Context, userID, id string) (int, []byte, error)
+	InsertVersionFn func(ctx context.Context, resumeID string, versionNo int, content []byte) (*db.ResumeVersionMeta, error)
+	ListVersionsFn  func(ctx context.Context, resumeID string) ([]db.ResumeVersionMeta, error)
+}
+
+var _ repositories.ResumeRepository = (*ResumeRepo)(nil)
+
+func (m *ResumeRepo) Create(ctx context.Context, userID, title string, templateID *string, content []byte) (*db.Resume, error) {
+	if m.CreateFn == nil {
+		return nil, nil
+	}
+	return m.CreateFn(ctx, userID, title, templateID, content)
+}
+
+func (m *ResumeRepo) Get(ctx context.Context, userID, id string) (*db.Resume, error) {
+	if m.GetFn == nil {
+		return nil, nil
+	}
+	return m.GetFn(ctx, userID, id)
+}
+
+func (m *ResumeRepo) Exists(ctx context.Context, userID, id string) error {
+	if m.ExistsFn == nil {
+		return nil
+	}
+	return m.ExistsFn(ctx, userID, id)
+}
+
+func (m *ResumeRepo) List(ctx context.Context, userID string, limit, offset int) ([]db.ResumeSummary, int, error) {
+	if m.ListFn == nil {
+		return nil, 0, nil
+	}
+	return m.ListFn(ctx, userID, limit, offset)
+}
+
+func (m *ResumeRepo) Update(ctx context.Context, userID, id string, title, templateID *string, content []byte) (*db.Resume, error) {
+	if m.UpdateFn == nil {
+		return nil, nil
+	}
+	return m.UpdateFn(ctx, userID, id, title, templateID, content)
+}
+
+func (m *ResumeRepo) Delete(ctx context.Context, userID, id string) error {
+	if m.DeleteFn == nil {
+		return nil
+	}
+	return m.DeleteFn(ctx, userID, id)
+}
+
+func (m *ResumeRepo) BumpVersion(ctx context.Context, userID, id string) (int, []byte, error) {
+	if m.BumpVersionFn == nil {
+		return 0, nil, nil
+	}
+	return m.BumpVersionFn(ctx, userID, id)
+}
+
+func (m *ResumeRepo) InsertVersion(ctx context.Context, resumeID string, versionNo int, content []byte) (*db.ResumeVersionMeta, error) {
+	if m.InsertVersionFn == nil {
+		return nil, nil
+	}
+	return m.InsertVersionFn(ctx, resumeID, versionNo, content)
+}
+
+func (m *ResumeRepo) ListVersions(ctx context.Context, resumeID string) ([]db.ResumeVersionMeta, error) {
+	if m.ListVersionsFn == nil {
+		return nil, nil
+	}
+	return m.ListVersionsFn(ctx, resumeID)
+}
+
+type TemplateRepo struct {
+	ListActiveFn func(ctx context.Context) ([]db.Template, error)
+	GetFn        func(ctx context.Context, id string) (*db.Template, error)
+	CreateFn     func(ctx context.Context, name, layout, previewURL string, active bool) (*db.Template, error)
+	UpdateFn     func(ctx context.Context, id string, patch repositories.TemplatePatch) (*db.Template, error)
+}
+
+var _ repositories.TemplateRepository = (*TemplateRepo)(nil)
+
+func (m *TemplateRepo) ListActive(ctx context.Context) ([]db.Template, error) {
+	if m.ListActiveFn == nil {
+		return nil, nil
+	}
+	return m.ListActiveFn(ctx)
+}
+
+func (m *TemplateRepo) Get(ctx context.Context, id string) (*db.Template, error) {
+	if m.GetFn == nil {
+		return nil, repositories.ErrNotFound
+	}
+	return m.GetFn(ctx, id)
+}
+
+func (m *TemplateRepo) Create(ctx context.Context, name, layout, previewURL string, active bool) (*db.Template, error) {
+	if m.CreateFn == nil {
+		return nil, nil
+	}
+	return m.CreateFn(ctx, name, layout, previewURL, active)
+}
+
+func (m *TemplateRepo) Update(ctx context.Context, id string, patch repositories.TemplatePatch) (*db.Template, error) {
+	if m.UpdateFn == nil {
+		return nil, nil
+	}
+	return m.UpdateFn(ctx, id, patch)
+}
+
+type FileRepo struct {
+	CreateFn       func(ctx context.Context, f *db.ResumeFile) (*db.ResumeFileMeta, error)
+	ListByResumeFn func(ctx context.Context, resumeID string) ([]db.ResumeFileMeta, error)
+	GetFn          func(ctx context.Context, resumeID, fileID string) (*db.ResumeFile, error)
+	DeleteFn       func(ctx context.Context, resumeID, fileID string) error
+	LatestExportFn func(ctx context.Context, resumeID, format string) (*db.ResumeFile, error)
+}
+
+var _ repositories.FileRepository = (*FileRepo)(nil)
+
+func (m *FileRepo) Create(ctx context.Context, f *db.ResumeFile) (*db.ResumeFileMeta, error) {
+	if m.CreateFn == nil {
+		return nil, nil
+	}
+	return m.CreateFn(ctx, f)
+}
+
+func (m *FileRepo) ListByResume(ctx context.Context, resumeID string) ([]db.ResumeFileMeta, error) {
+	if m.ListByResumeFn == nil {
+		return nil, nil
+	}
+	return m.ListByResumeFn(ctx, resumeID)
+}
+
+func (m *FileRepo) Get(ctx context.Context, resumeID, fileID string) (*db.ResumeFile, error) {
+	if m.GetFn == nil {
+		return nil, repositories.ErrNotFound
+	}
+	return m.GetFn(ctx, resumeID, fileID)
+}
+
+func (m *FileRepo) Delete(ctx context.Context, resumeID, fileID string) error {
+	if m.DeleteFn == nil {
+		return nil
+	}
+	return m.DeleteFn(ctx, resumeID, fileID)
+}
+
+func (m *FileRepo) LatestExport(ctx context.Context, resumeID, format string) (*db.ResumeFile, error) {
+	if m.LatestExportFn == nil {
+		return nil, repositories.ErrNotFound
+	}
+	return m.LatestExportFn(ctx, resumeID, format)
+}

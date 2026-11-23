@@ -1,0 +1,62 @@
+package services
+
+import (
+	"context"
+	"net/http"
+	"testing"
+
+	"9itchi-resume-api/models/api"
+	"9itchi-resume-api/models/db"
+	"9itchi-resume-api/repositories"
+	"9itchi-resume-api/services/mocks"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+func TestTemplateService(t *testing.T) {
+	repo := &mocks.TemplateRepo{}
+	svc := NewTemplateService(repo)
+
+	repo.ListActiveFn = func(context.Context) ([]db.Template, error) {
+		return []db.Template{{ID: tid, Name: "Classic", Layout: "classic", Active: true}}, nil
+	}
+	list, apiErr := svc.ListTemplates(context.Background(), uid)
+	require.Nil(t, apiErr)
+	require.Len(t, list.Items, 1)
+
+	_, apiErr = svc.GetTemplate(context.Background(), uid, "bad")
+	require.NotNil(t, apiErr)
+	assert.Equal(t, http.StatusBadRequest, apiErr.Code)
+
+	_, apiErr = svc.GetTemplate(context.Background(), uid, tid) // mock default: not found
+	require.NotNil(t, apiErr)
+	assert.Equal(t, http.StatusNotFound, apiErr.Code)
+
+	var gotActive bool
+	repo.CreateFn = func(_ context.Context, name, layout, _ string, active bool) (*db.Template, error) {
+		gotActive = active
+		return &db.Template{ID: tid, Name: name, Layout: layout, Active: active}, nil
+	}
+	_, apiErr = svc.CreateTemplate(context.Background(), uid, api.CreateTemplateRequest{Name: "X", Layout: "modern"})
+	require.Nil(t, apiErr)
+	assert.True(t, gotActive, "active defaults to true")
+
+	repo.CreateFn = func(context.Context, string, string, string, bool) (*db.Template, error) {
+		return nil, repositories.ErrConflict
+	}
+	_, apiErr = svc.CreateTemplate(context.Background(), uid, api.CreateTemplateRequest{Name: "X", Layout: "modern"})
+	require.NotNil(t, apiErr)
+	assert.Equal(t, http.StatusConflict, apiErr.Code)
+
+	off := false
+	var patch repositories.TemplatePatch
+	repo.UpdateFn = func(_ context.Context, id string, p repositories.TemplatePatch) (*db.Template, error) {
+		patch = p
+		return &db.Template{ID: id}, nil
+	}
+	_, apiErr = svc.UpdateTemplate(context.Background(), uid, tid, api.UpdateTemplateRequest{Active: &off})
+	require.Nil(t, apiErr)
+	require.NotNil(t, patch.Active)
+	assert.False(t, *patch.Active)
+}
