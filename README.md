@@ -25,6 +25,7 @@ Port `8082`, health `/health`. All endpoints are implemented.
 | POST | `/resumes/:id/export` | user | ExportResume |
 | POST | `/resumes/:id/ats-check` | user | ATSCheck (the 24 CV rules) |
 | GET | `/internal/resumes/:id/pdf` | internal | InternalResumePDF |
+| POST | `/internal/tips/send` | internal | SendTips: `{"sent": N, "failed": N}` |
 | GET | `/me/downloads` | user | Downloads (`{"used"}`) |
 | GET | `/templates` | user | ListTemplates |
 | GET | `/templates/:id` | user | GetTemplate |
@@ -57,6 +58,22 @@ go run main.go
 - `POST /resumes/:id/export` body `{"format":"pdf"|"docx"}` renders the CV with its template's layout and stores it as a `kind=export` file named `prenom_nom.pdf|docx`. The three layouts follow screen 4.3: `classic` (Source Sans 3, round photo, blue small-caps headline, blue uppercase titles over a rule), `modern` (dark `#1F2A44` side column with photo, contact, skills and languages; Source Serif 4 titles) and `compact` (black and white, centred name, never a photo). The PDF embeds Latin subsets of Source Sans 3 / Source Serif 4 (SIL OFL, `core/fonts`); characters outside them print as `?`. The Word file keeps the same layout with Calibri/Cambria and is for subscribers only (`402` on the free plan). Headings are French, English for English CVs. Unknown formats return `400`. Exporters are registered in `core.DefaultExporters()`.
 - `GET /internal/resumes/:id/pdf` (`x-api-key`) renders the CV as it is now (template, language, photo) and returns the PDF; `404` when the resume does not exist. Nothing is stored and it is not counted as a download, so an application always carries the current CV.
 - Templates: 3 seeded (classic, modern, compact); admins create/edit/deactivate; `GET /templates` lists active ones.
+
+## CV tips (sprint 6)
+
+`POST /internal/tips/send` raises the weekly advice of « Paramètres → Alertes → Conseils CV ». schedule-api calls it during the day in Tunis.
+
+- A call claims at most 50 students who were never tipped or were last tipped about a week ago (`cv_tips`, one row per student, written before anything is sent, so several instances never tip the same student twice).
+- For each, the CV they changed last is checked with the 24 rules. A CV still being read, or changed in the last 3 days (the student is working on it), is left alone.
+- When points are left to correct, the event `cv.tips` is published (`user_id`, `resume_id`, `count`, `rule`: the first rule to correct). With nothing to correct nothing is raised, and the student is looked at again a week later.
+- resume-api only raises the event: notification-api reads the student's settings and makes it a notification, an email, both or nothing.
+- An event that could not be published, or a CV that could not be read, gives its claim back and is counted in `failed`: the next call tries again.
+
+## Events (RabbitMQ)
+
+Optional. With `RABBITMQ_URL` set, `cv.tips` is published on the topic exchange `9itchi.events` (routing key = event name, persistent JSON, publisher confirms). Without it the event name is logged and nothing is published. The URL is never logged.
+
+Broker tests: `RABBITMQ_TEST_URL=amqp://guest:guest@localhost:5672/ go test -tags integration ./core/` (skipped without the variable).
 
 ## Tests
 

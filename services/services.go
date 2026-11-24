@@ -14,6 +14,7 @@ type Services struct {
 	Resume   ResumeService
 	Template TemplateService
 	File     FileService
+	Tip      TipService
 	Clients  *Clients
 }
 
@@ -35,6 +36,7 @@ func InitServices(config utils.AppConfig, repos *repositories.Repositories) *Ser
 			WithParser(clients.Ai), WithQuotas(clients.Payments)),
 		Template: NewTemplateService(repos.Template),
 		File:     NewFileService(repos.File, repos.Resume),
+		Tip:      NewTipService(repos.Tip, repos.Resume, repos.Template, core.NewPublisher(config.RabbitMQURL)),
 		Clients:  clients,
 	}
 }

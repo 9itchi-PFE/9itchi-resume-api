@@ -23,6 +23,8 @@ type AppConfig struct {
 	AiAPIURL       string
 	AccountAPIURL  string
 	PaymentsAPIURL string
+	// RabbitMQURL is where events are published (env RABBITMQ_URL); empty logs them instead. Never log it.
+	RabbitMQURL string
 }
 
 // LoadConfig loads configuration from environment variables.
@@ -40,6 +42,7 @@ func LoadConfig() AppConfig {
 		AiAPIURL:               getStringWithDefault("AI_API_URL", "http://9itchi-ai-api:8083"),
 		AccountAPIURL:          getStringWithDefault("ACCOUNT_API_URL", "http://9itchi-account-api:8081"),
 		PaymentsAPIURL:         getStringWithDefault("PAYMENTS_API_URL", "http://9itchi-payments-api:8089"),
+		RabbitMQURL:            getStringWithDefault("RABBITMQ_URL", ""),
 	}
 }
 

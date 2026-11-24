@@ -255,3 +255,10 @@ type DownloadsResponse struct {
 type DuplicateResumeRequest struct {
 	Title string `json:"title" binding:"required,max=200"`
 }
+
+// TipsResponse counts the CV tips raised by one call, and those that could not be raised (they are tried again at
+// the next call).
+type TipsResponse struct {
+	Sent   int `json:"sent"`
+	Failed int `json:"failed"`
+}
