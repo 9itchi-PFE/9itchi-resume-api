@@ -52,6 +52,7 @@ func ResumeToResponse(r *db.Resume) api.ResumeResponse {
 		Version:     r.Version,
 		ParseStatus: r.ParseStatus,
 		Language:    r.Language,
+		ParseReport: ParseReport(r.ParseReport),
 		Content:     ParseContent(r.Content),
 		CreatedAt:   r.CreatedAt,
 		UpdatedAt:   r.UpdatedAt,
@@ -97,4 +98,19 @@ func FileMetaToResponse(f *db.ResumeFileMeta) api.FileResponse {
 		SHA256:      f.SHA256,
 		CreatedAt:   f.CreatedAt,
 	}
+}
+
+// ParseReport decodes resumes.parse_report (nil when absent or invalid).
+func ParseReport(raw []byte) *api.ParseReport {
+	if len(raw) == 0 {
+		return nil
+	}
+	var rep api.ParseReport
+	if json.Unmarshal(raw, &rep) != nil {
+		return nil
+	}
+	if rep.Removed == nil {
+		rep.Removed = []string{}
+	}
+	return &rep
 }

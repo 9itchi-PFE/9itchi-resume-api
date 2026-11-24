@@ -2,9 +2,11 @@ package services
 
 import (
 	"context"
+	"encoding/json"
 	"time"
 
 	"9itchi-resume-api/core"
+	"9itchi-resume-api/models/api"
 	"9itchi-resume-api/models/db"
 	"9itchi-resume-api/utils"
 
@@ -20,6 +22,7 @@ const parseTimeout = 2 * time.Minute
 func (s *resumeService) readUpload(resumeID, format string, data []byte) {
 	ctx, cancel := context.WithTimeout(context.Background(), parseTimeout)
 	defer cancel()
+	started := time.Now()
 	fail := func(step string, err error) {
 		utils.Logger.Warn("cv reading failed", zap.String("step", step), zap.String("resume_id", resumeID), zap.Error(err))
 		if err := s.repo.SetParseStatus(ctx, resumeID, db.ParseFailed); err != nil {
@@ -45,7 +48,20 @@ func (s *resumeService) readUpload(resumeID, format string, data []byte) {
 	if lang != "fr" && lang != "en" && lang != "ar" {
 		lang = ""
 	}
-	applied, err := s.repo.ApplyParsed(ctx, resumeID, raw, lang)
+	removed := []string{}
+	for _, r := range parsed.Removed {
+		switch r {
+		case "age", "birth_date", "nationality", "marital_status", "full_address":
+			removed = append(removed, r)
+		}
+	}
+	report, _ := json.Marshal(api.ParseReport{
+		Pages:     core.PageCount(data, format),
+		Seconds:   int(time.Since(started).Round(time.Second) / time.Second),
+		Rewritten: max(parsed.Rewritten, 0),
+		Removed:   removed,
+	})
+	applied, err := s.repo.ApplyParsed(ctx, resumeID, raw, lang, report)
 	if err != nil {
 		fail("store", err)
 		return

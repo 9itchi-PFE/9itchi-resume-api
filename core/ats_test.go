@@ -84,17 +84,27 @@ func TestEachRuleCanFail(t *testing.T) {
 		where string
 	}{
 		{"contact_details", func(c *api.ResumeContent) { c.Contact.Phone = "" }, "contact.phone"},
-		{"no_personal_details", func(c *api.ResumeContent) { c.Summary = "Étudiante de 23 ans, célibataire, passionnée par le développement web et les systèmes embarqués, curieuse." }, "summary"},
+		{"no_personal_details", func(c *api.ResumeContent) {
+			c.Summary = "Étudiante de 23 ans, célibataire, passionnée par le développement web et les systèmes embarqués, curieuse."
+		}, "summary"},
 		{"profile_links", func(c *api.ResumeContent) { c.Contact.Links = nil }, "contact.links"},
 		{"summary", func(c *api.ResumeContent) { c.Summary = "Étudiante." }, "summary"},
-		{"action_verbs", func(c *api.ResumeContent) { c.Experience[0].Description[1] = "Fonctionne sans réseau et synchronise 20 badges." }, "experience[0].description[1]"},
+		{"action_verbs", func(c *api.ResumeContent) {
+			c.Experience[0].Description[1] = "Fonctionne sans réseau et synchronise 20 badges."
+		}, "experience[0].description[1]"},
 		{"quantified_results", func(c *api.ResumeContent) {
 			c.Experience[0].Description = []string{"Développé la page de réservation.", "Réduit le temps de chargement."}
 			c.Experience[1].Description = []string{"Conçu un lecteur de badges NFC."}
 		}, "experience[0].description[0]"},
-		{"short_bullets", func(c *api.ResumeContent) { c.Experience[1].Description[0] = "Conçu " + strings.Repeat("un lecteur, ", 30) + "15 fois." }, "experience[1].description[0]"},
-		{"no_first_person", func(c *api.ResumeContent) { c.Experience[0].Description[0] = "Développé avec mon équipe 3 modules React." }, "experience[0].description[0]"},
-		{"number_style", func(c *api.ResumeContent) { c.Experience[0].Description[1] = "Réduit le temps de chargement avec 4 développeurs, 30 % de gain." }, "experience[0].description[1]"},
+		{"short_bullets", func(c *api.ResumeContent) {
+			c.Experience[1].Description[0] = "Conçu " + strings.Repeat("un lecteur, ", 30) + "15 fois."
+		}, "experience[1].description[0]"},
+		{"no_first_person", func(c *api.ResumeContent) {
+			c.Experience[0].Description[0] = "Développé avec mon équipe 3 modules React."
+		}, "experience[0].description[0]"},
+		{"number_style", func(c *api.ResumeContent) {
+			c.Experience[0].Description[1] = "Réduit le temps de chargement avec 4 développeurs, 30 % de gain."
+		}, "experience[0].description[1]"},
 		{"reverse_chronological", func(c *api.ResumeContent) { c.Experience[0], c.Experience[1] = c.Experience[1], c.Experience[0] }, "experience[1].start"},
 		{"graduation_year", func(c *api.ResumeContent) { c.Education[0].End = "" }, "education[0].end"},
 		{"no_skill_ratings", func(c *api.ResumeContent) { c.Languages = []string{"Anglais ★★★★☆"} }, "languages[0]"},

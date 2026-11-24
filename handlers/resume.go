@@ -187,3 +187,97 @@ func InternalResumePDF(svc services.ResumeService) gin.HandlerFunc {
 		sendFile(c, result)
 	}
 }
+
+// GetVersion: GET /resumes/:id/versions/:versionId (user) one saved version with its content.
+func GetVersion(svc services.ResumeService) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		result, apiErr := svc.GetVersion(c.Request.Context(), c.GetString("user_id"), c.Param("id"), c.Param("versionId"))
+		if apiErr != nil {
+			models.FormatError(c, apiErr)
+			return
+		}
+		c.JSON(http.StatusOK, result)
+	}
+}
+
+// RestoreVersion: POST /resumes/:id/versions/:versionId/restore (user) put a saved version back.
+func RestoreVersion(svc services.ResumeService) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		result, apiErr := svc.RestoreVersion(c.Request.Context(), c.GetString("user_id"), c.Param("id"), c.Param("versionId"))
+		if apiErr != nil {
+			models.FormatError(c, apiErr)
+			return
+		}
+		c.JSON(http.StatusOK, result)
+	}
+}
+
+// DuplicateResume: POST /resumes/:id/duplicate (user) copy a CV under a new title.
+func DuplicateResume(svc services.ResumeService) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req api.DuplicateResumeRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			models.FormatError(c, &models.ApiError{Code: http.StatusBadRequest, Error: err})
+			return
+		}
+		result, apiErr := svc.DuplicateResume(c.Request.Context(), c.GetString("user_id"), c.Param("id"), req)
+		if apiErr != nil {
+			models.FormatError(c, apiErr)
+			return
+		}
+		c.JSON(http.StatusCreated, result)
+	}
+}
+
+// UploadPhoto: PUT /resumes/:id/photo (user) multipart field "file", JPEG or PNG, 2 MB max.
+func UploadPhoto(svc services.ResumeService) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, services.MaxPhotoBytes+multipartOverhead)
+		header, err := c.FormFile("file")
+		if err != nil {
+			var tooLarge *http.MaxBytesError
+			if errors.As(err, &tooLarge) {
+				models.FormatError(c, &models.ApiError{Code: http.StatusRequestEntityTooLarge, Error: errors.New("photo too large (max 2 MB)")})
+				return
+			}
+			models.FormatError(c, &models.ApiError{Code: http.StatusBadRequest, Error: errors.New("multipart field 'file' is required")})
+			return
+		}
+		f, err := header.Open()
+		if err != nil {
+			models.FormatError(c, &models.ApiError{Code: http.StatusBadRequest, Error: errors.New("could not read file")})
+			return
+		}
+		defer f.Close()
+		if apiErr := svc.UploadPhoto(c.Request.Context(), c.GetString("user_id"), c.Param("id"), f); apiErr != nil {
+			models.FormatError(c, apiErr)
+			return
+		}
+		c.Status(http.StatusNoContent)
+	}
+}
+
+// GetPhoto: GET /resumes/:id/photo (user) the CV photo, inline.
+func GetPhoto(svc services.ResumeService) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		result, apiErr := svc.GetPhoto(c.Request.Context(), c.GetString("user_id"), c.Param("id"))
+		if apiErr != nil {
+			models.FormatError(c, apiErr)
+			return
+		}
+		c.Header("X-Content-Type-Options", "nosniff")
+		c.Header("Cache-Control", "private, no-cache")
+		c.Data(http.StatusOK, result.ContentType, result.Data)
+	}
+}
+
+// DeletePhoto: DELETE /resumes/:id/photo (user).
+func DeletePhoto(svc services.ResumeService) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if apiErr := svc.DeletePhoto(c.Request.Context(), c.GetString("user_id"), c.Param("id")); apiErr != nil {
+			models.FormatError(c, apiErr)
+			return
+		}
+		c.Status(http.StatusNoContent)
+	}
+}

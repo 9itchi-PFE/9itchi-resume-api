@@ -84,11 +84,15 @@ type ResumeResponse struct {
 	TemplateID *string `json:"template_id"`
 	Version    int     `json:"version"`
 	// ParseStatus is none|pending|done|failed while an uploaded CV is read; poll GET /resumes/:id until it leaves pending.
-	ParseStatus string        `json:"parse_status"`
-	Language    *string       `json:"language"`
-	Content     ResumeContent `json:"content"`
-	CreatedAt   time.Time     `json:"created_at"`
-	UpdatedAt   time.Time     `json:"updated_at"`
+	ParseStatus string  `json:"parse_status"`
+	Language    *string `json:"language"`
+	// ParseReport says what the reading changed (screen 1.2c); null until an upload is read.
+	ParseReport *ParseReport `json:"parse_report"`
+	// HasPhoto is true when a photo was uploaded (GET /resumes/:id/photo).
+	HasPhoto  bool          `json:"has_photo"`
+	Content   ResumeContent `json:"content"`
+	CreatedAt time.Time     `json:"created_at"`
+	UpdatedAt time.Time     `json:"updated_at"`
 }
 
 // ResumeListItem is a resume without content.
@@ -151,4 +155,26 @@ type ATSCheckResponse struct {
 	Total  int             `json:"total"`
 	ToFix  int             `json:"to_fix"`
 	Rules  []ATSRuleResult `json:"rules"`
+}
+
+// ParseReport describes the reading of an uploaded CV.
+type ParseReport struct {
+	// Pages of the uploaded file (0 for DOCX) and how long the reading took.
+	Pages   int `json:"pages"`
+	Seconds int `json:"seconds"`
+	// Rewritten lines now start with a past-tense verb; Removed lists personal details left out
+	// (age, birth_date, nationality, marital_status, full_address).
+	Rewritten int      `json:"rewritten"`
+	Removed   []string `json:"removed"`
+}
+
+// VersionContentResponse is one saved version with its content.
+type VersionContentResponse struct {
+	VersionResponse
+	Content ResumeContent `json:"content"`
+}
+
+// DuplicateResumeRequest is the body of POST /resumes/:id/duplicate.
+type DuplicateResumeRequest struct {
+	Title string `json:"title" binding:"required,max=200"`
 }

@@ -62,14 +62,15 @@ func newSprint2Fixture(opts ...Option) (*fixture, *resumeService) {
 }
 
 func TestUploadIsReadByAI(t *testing.T) {
-	parser := &fakeParser{out: &core.ParsedResume{Language: "fr", Content: api.ResumeContent{Contact: api.Contact{Name: "Ines Mansour"}, Skills: []string{"Go"}}}}
+	parser := &fakeParser{out: &core.ParsedResume{Language: "fr", Rewritten: 3, Removed: []string{"age", "religion", "full_address"}, Content: api.ResumeContent{Contact: api.Contact{Name: "Ines Mansour"}, Skills: []string{"Go"}}}}
 	f, _ := newSprint2Fixture(WithParser(parser))
 	var statuses []string
 	var applied []byte
 	var lang string
+	var report []byte
 	f.resumes.SetParseStatusFn = func(_ context.Context, id, st string) error { statuses = append(statuses, st); return nil }
-	f.resumes.ApplyParsedFn = func(_ context.Context, id string, c []byte, l string) (bool, error) {
-		applied, lang = c, l
+	f.resumes.ApplyParsedFn = func(_ context.Context, id string, c []byte, l string, rep []byte) (bool, error) {
+		applied, lang, report = c, l, rep
 		return true, nil
 	}
 	data := cvDocx(t, "Ines Mansour, Go")
@@ -81,6 +82,7 @@ func TestUploadIsReadByAI(t *testing.T) {
 	assert.Contains(t, string(applied), `"name":"Ines Mansour"`)
 	assert.Contains(t, string(applied), `"certifications":[]`)
 	assert.Equal(t, "fr", lang)
+	assert.JSONEq(t, `{"pages":0,"seconds":0,"rewritten":3,"removed":["age","full_address"]}`, string(report))
 }
 
 func TestUploadReadingFailures(t *testing.T) {
@@ -96,7 +98,7 @@ func TestUploadReadingFailures(t *testing.T) {
 		f, _ := newSprint2Fixture(WithParser(tc.parser))
 		var statuses []string
 		f.resumes.SetParseStatusFn = func(_ context.Context, _, st string) error { statuses = append(statuses, st); return nil }
-		f.resumes.ApplyParsedFn = func(context.Context, string, []byte, string) (bool, error) {
+		f.resumes.ApplyParsedFn = func(context.Context, string, []byte, string, []byte) (bool, error) {
 			t.Errorf("%s: nothing must be applied", name)
 			return false, nil
 		}

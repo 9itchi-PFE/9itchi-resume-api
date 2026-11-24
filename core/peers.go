@@ -11,6 +11,10 @@ import (
 type ParsedResume struct {
 	Content  api.ResumeContent
 	Language string
+	// Rewritten is how many lines the AI turned into past-tense action lines; Removed lists the personal details
+	// it left out (age, birth_date, nationality, marital_status, full_address).
+	Rewritten int
+	Removed   []string
 }
 
 // ResumeParser turns CV text into structured content (ai-api). Implementations never log the text.

@@ -11,8 +11,10 @@ type Resume struct {
 	TemplateID *string `db:"template_id" json:"template_id"`
 	Version    int     `db:"version" json:"version"`
 	// ParseStatus is none|pending|done|failed (AI reading of an uploaded CV); Language is fr|en|ar once known.
-	ParseStatus string    `db:"parse_status" json:"parse_status"`
-	Language    *string   `db:"language" json:"language"`
+	ParseStatus string  `db:"parse_status" json:"parse_status"`
+	Language    *string `db:"language" json:"language"`
+	// ParseReport is what the AI changed while reading the upload (jsonb, nil when never read).
+	ParseReport []byte    `db:"parse_report" json:"-"`
 	CreatedAt   time.Time `db:"created_at" json:"created_at"`
 	UpdatedAt   time.Time `db:"updated_at" json:"updated_at"`
 }
@@ -40,5 +42,14 @@ type ResumeVersionMeta struct {
 	ID        string    `db:"id"`
 	ResumeID  string    `db:"resume_id"`
 	VersionNo int       `db:"version_no"`
+	CreatedAt time.Time `db:"created_at"`
+}
+
+// ResumeVersion is a resume_versions row with its content.
+type ResumeVersion struct {
+	ID        string    `db:"id"`
+	ResumeID  string    `db:"resume_id"`
+	VersionNo int       `db:"version_no"`
+	Content   []byte    `db:"content"`
 	CreatedAt time.Time `db:"created_at"`
 }

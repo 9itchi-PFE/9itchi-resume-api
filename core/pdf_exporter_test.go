@@ -37,7 +37,7 @@ func TestPDFExporterOutputsPDF(t *testing.T) {
 
 func TestPDFExporterEmptyAndHostileContent(t *testing.T) {
 	c := api.ResumeContent{
-		Summary: "<script>alert(1)</script> (unbalanced \\ ) \x00 ‮ emoji \U0001F600 中文",
+		Summary: "<script>alert(1)</script> (unbalanced \\ ) \x00 \u202e emoji \U0001F600 中文",
 		Skills:  []string{strings.Repeat("W", 5000)},
 	}
 	out, err := NewPDFExporter().Render(context.Background(), c, "classic", RenderOptions{})

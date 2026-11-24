@@ -16,6 +16,12 @@ Port `8082`, health `/health`. All endpoints are implemented.
 | DELETE | `/resumes/:id` | user | DeleteResume |
 | GET | `/resumes/:id/versions` | user | ListVersions |
 | POST | `/resumes/:id/versions` | user | CreateVersion |
+| GET | `/resumes/:id/versions/:versionId` | user | GetVersion (with content) |
+| POST | `/resumes/:id/versions/:versionId/restore` | user | RestoreVersion |
+| POST | `/resumes/:id/duplicate` | user | DuplicateResume |
+| PUT | `/resumes/:id/photo` | user | UploadPhoto (multipart `file`) |
+| GET | `/resumes/:id/photo` | user | GetPhoto |
+| DELETE | `/resumes/:id/photo` | user | DeletePhoto |
 | POST | `/resumes/:id/export` | user | ExportResume |
 | POST | `/resumes/:id/ats-check` | user | ATSCheck (the 24 CV rules) |
 | GET | `/internal/resumes/:id/pdf` | internal | InternalResumePDF |
@@ -41,6 +47,8 @@ go run main.go
 - `POST /resumes/:id/versions` snapshots the content and increments `resumes.version` in one transaction; `GET` lists versions without content.
 - `POST /resumes/upload`: multipart field `file`, PDF or DOCX only, max 10 MB, magic bytes checked. Creates a resume (title from filename, empty content) and stores the original in `resume_files` (bytea) in one transaction. Then the CV is read in the background: text extracted (`core.ExtractText`), structured by ai-api (`POST /ai/resume/parse`), stored. `parse_status` on the resume goes `pending` → `done` or `failed` (poll `GET /resumes/:id`); a user edit while pending wins and the late AI result is discarded. `language` (`fr|en|ar`) is set once read.
 - `content` also holds `certifications[{name,issuer,year}]`.
+- `POST /resumes/:id/versions/:versionId/restore` first saves the current content as a new version, then puts the old one back, in one transaction, so a restore can itself be undone. `POST /resumes/:id/duplicate` (`{"title"}`) copies content and template into a new CV and counts against the `resumes` quota (`402`).
+- The CV photo is one JPEG or PNG per CV (checked by its bytes, max 2 MB, `413` beyond); a new upload replaces the old one. `GET /resumes/:id` says `has_photo`. After an AI read, `parse_report` holds `{pages,seconds,rewritten,removed[]}` for the « Ce qu'on a changé » box; `removed` only lists `age`, `birth_date`, `nationality`, `marital_status`, `address`.
 - Plan limits come from payments-api (`GET /internal/quotas/:userId`): `resumes` caps how many CVs a user may have (create and upload answer `402` beyond it; versions are never limited) and `cv_downloads` caps downloads, counted in `resume_downloads` so deleting a CV does not reset them (`402` beyond it). Free-plan exports carry the "CV créé avec 9itchi" mark. A missing key means no limit; when payments-api cannot answer, these routes return `503`.
 - `POST /resumes/:id/ats-check` (optional body `{"target_language":"fr|en|ar"}`) runs the 24 rules of screen 4.2 and returns `{passed,total,to_fix,rules:[{id,group,status,where,was,now}]}` with `status` `ok|fix|tip`. Rule ids, in screen order: `contact_details, no_personal_details, profile_links, photo, summary, action_verbs, quantified_results, short_bullets, no_first_person, number_style, reverse_chronological, graduation_year, gpa, local_diplomas, no_skill_ratings, relevant_skills, certifications, one_page, fonts, colors, bold_titles, file_name, pdf_size, company_language`. `where` is a JSON path (`experience[0].description[1]`) to highlight, `was` the current text; rewrites come from ai-api `POST /ai/resume/rewrite`. The texts of each rule live in the client (fr, en, ar). The page and size rules render the CV with its template.
 - Files: `GET /resumes/:id/files` (metadata only), `GET /resumes/:id/files/:fileId` (attachment download), `DELETE` returns `204`.

@@ -55,9 +55,13 @@ func (c *Client) Parse(ctx context.Context, text string) (*core.ParsedResume, er
 	var out struct {
 		Content  api.ResumeContent `json:"content"`
 		Language string            `json:"language"`
+		Changes  struct {
+			Rewritten int      `json:"rewritten"`
+			Removed   []string `json:"removed"`
+		} `json:"changes"`
 	}
 	if err := json.NewDecoder(io.LimitReader(resp.Body, 4<<20)).Decode(&out); err != nil {
 		return nil, fmt.Errorf("ai parse: decode: %w", err)
 	}
-	return &core.ParsedResume{Content: out.Content, Language: out.Language}, nil
+	return &core.ParsedResume{Content: out.Content, Language: out.Language, Rewritten: out.Changes.Rewritten, Removed: out.Changes.Removed}, nil
 }

@@ -373,6 +373,14 @@ func ratings(c api.ResumeContent) *api.ATSFinding {
 	return nil
 }
 
+// PageCount returns the pages of an uploaded file (0 for DOCX or when unknown).
+func PageCount(data []byte, format string) int {
+	if format != "pdf" {
+		return 0
+	}
+	return pageCount(data)
+}
+
 // pageCount reads the number of pages of a rendered PDF (0 when unknown).
 func pageCount(data []byte) (n int) {
 	if len(data) == 0 {

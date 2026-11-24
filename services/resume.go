@@ -54,6 +54,18 @@ type ResumeService interface {
 	ExportResume(ctx context.Context, userID string, id string, req api.ExportResumeRequest) (*api.FileResponse, *models.ApiError)
 	// POST /resumes/:id/ats-check: the 24 CV rules
 	ATSCheck(ctx context.Context, userID string, id string, req api.ATSCheckRequest) (*api.ATSCheckResponse, *models.ApiError)
+	// GET /resumes/:id/versions/:versionId: one saved version with its content
+	GetVersion(ctx context.Context, userID, id, versionID string) (*api.VersionContentResponse, *models.ApiError)
+	// POST /resumes/:id/versions/:versionId/restore: put a saved version back (the replaced content is saved first)
+	RestoreVersion(ctx context.Context, userID, id, versionID string) (*api.ResumeResponse, *models.ApiError)
+	// POST /resumes/:id/duplicate: copy a CV under a new title (counts against the CV limit)
+	DuplicateResume(ctx context.Context, userID, id string, req api.DuplicateResumeRequest) (*api.ResumeResponse, *models.ApiError)
+	// PUT /resumes/:id/photo: JPEG or PNG, 2 MB max, replaces the previous photo
+	UploadPhoto(ctx context.Context, userID, id string, r io.Reader) *models.ApiError
+	// GET /resumes/:id/photo
+	GetPhoto(ctx context.Context, userID, id string) (*api.FileContent, *models.ApiError)
+	// DELETE /resumes/:id/photo
+	DeletePhoto(ctx context.Context, userID, id string) *models.ApiError
 	// GET /internal/resumes/:id/pdf: latest exported PDF bytes (email attachments), no user scoping
 	InternalResumePDF(ctx context.Context, id string) (*api.FileContent, *models.ApiError)
 }
@@ -302,8 +314,7 @@ func (s *resumeService) GetResume(ctx context.Context, userID string, id string)
 	if err != nil {
 		return nil, repoError(err, "resume not found")
 	}
-	resp := mapping.ResumeToResponse(res)
-	return &resp, nil
+	return s.response(ctx, res), nil
 }
 
 func (s *resumeService) UpdateResume(ctx context.Context, userID string, id string, req api.UpdateResumeRequest) (*api.ResumeResponse, *models.ApiError) {

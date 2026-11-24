@@ -31,7 +31,15 @@ type ResumeRepo struct {
 	ListVersionsFn   func(ctx context.Context, resumeID string) ([]db.ResumeVersionMeta, error)
 	CountByUserFn    func(ctx context.Context, userID string) (int, error)
 	SetParseStatusFn func(ctx context.Context, id, status string) error
-	ApplyParsedFn    func(ctx context.Context, id string, content []byte, language string) (bool, error)
+	ApplyParsedFn    func(ctx context.Context, id string, content []byte, language string, report []byte) (bool, error)
+	GetVersionFn     func(ctx context.Context, resumeID, versionID string) (*db.ResumeVersion, error)
+}
+
+func (m *ResumeRepo) GetVersion(ctx context.Context, resumeID, versionID string) (*db.ResumeVersion, error) {
+	if m.GetVersionFn == nil {
+		return nil, nil
+	}
+	return m.GetVersionFn(ctx, resumeID, versionID)
 }
 
 func (m *ResumeRepo) CountByUser(ctx context.Context, userID string) (int, error) {
@@ -48,11 +56,11 @@ func (m *ResumeRepo) SetParseStatus(ctx context.Context, id, status string) erro
 	return m.SetParseStatusFn(ctx, id, status)
 }
 
-func (m *ResumeRepo) ApplyParsed(ctx context.Context, id string, content []byte, language string) (bool, error) {
+func (m *ResumeRepo) ApplyParsed(ctx context.Context, id string, content []byte, language string, report []byte) (bool, error) {
 	if m.ApplyParsedFn == nil {
 		return true, nil
 	}
-	return m.ApplyParsedFn(ctx, id, content, language)
+	return m.ApplyParsedFn(ctx, id, content, language, report)
 }
 
 var _ repositories.ResumeRepository = (*ResumeRepo)(nil)
@@ -165,6 +173,30 @@ type FileRepo struct {
 	LatestExportFn       func(ctx context.Context, resumeID, format string) (*db.ResumeFile, error)
 	CountExportsByUserFn func(ctx context.Context, userID string) (int, error)
 	RecordDownloadFn     func(ctx context.Context, userID, resumeID, format string) error
+	LatestPhotoFn        func(ctx context.Context, resumeID string) (*db.ResumeFile, error)
+	HasPhotoFn           func(ctx context.Context, resumeID string) (bool, error)
+	DeletePhotosFn       func(ctx context.Context, resumeID string) error
+}
+
+func (m *FileRepo) LatestPhoto(ctx context.Context, resumeID string) (*db.ResumeFile, error) {
+	if m.LatestPhotoFn == nil {
+		return nil, repositories.ErrNotFound
+	}
+	return m.LatestPhotoFn(ctx, resumeID)
+}
+
+func (m *FileRepo) HasPhoto(ctx context.Context, resumeID string) (bool, error) {
+	if m.HasPhotoFn == nil {
+		return false, nil
+	}
+	return m.HasPhotoFn(ctx, resumeID)
+}
+
+func (m *FileRepo) DeletePhotos(ctx context.Context, resumeID string) error {
+	if m.DeletePhotosFn == nil {
+		return nil
+	}
+	return m.DeletePhotosFn(ctx, resumeID)
 }
 
 func (m *FileRepo) RecordDownload(ctx context.Context, userID, resumeID, format string) error {

@@ -9,7 +9,7 @@ import (
 )
 
 const (
-	resumeColumns        = `id, user_id, title, content, template_id, version, parse_status, language, created_at, updated_at`
+	resumeColumns        = `id, user_id, title, content, template_id, version, parse_status, language, parse_report, created_at, updated_at`
 	resumeSummaryColumns = `id, title, template_id, version, created_at, updated_at`
 )
 
@@ -36,7 +36,9 @@ type ResumeRepository interface {
 	SetParseStatus(ctx context.Context, id, status string) error
 	// ApplyParsed stores the AI result only while parse_status is still pending (the user has not edited since).
 	// It returns false when the result was discarded.
-	ApplyParsed(ctx context.Context, id string, content []byte, language string) (bool, error)
+	ApplyParsed(ctx context.Context, id string, content []byte, language string, report []byte) (bool, error)
+	// GetVersion returns one saved version with its content.
+	GetVersion(ctx context.Context, resumeID, versionID string) (*db.ResumeVersion, error)
 }
 
 type resumeRepository struct {
@@ -189,14 +191,27 @@ func (r *resumeRepository) SetParseStatus(ctx context.Context, id, status string
 	return nil
 }
 
-func (r *resumeRepository) ApplyParsed(ctx context.Context, id string, content []byte, language string) (bool, error) {
+func (r *resumeRepository) ApplyParsed(ctx context.Context, id string, content []byte, language string, report []byte) (bool, error) {
 	ctx, cancel := QueryTimeout(ctx)
 	defer cancel()
 	tag, err := r.store.Conn(ctx).Exec(ctx,
-		`UPDATE resumes SET content = $2, language = NULLIF($3, ''), parse_status = 'done', updated_at = now()
-		 WHERE id = $1 AND parse_status = 'pending'`, id, content, language)
+		`UPDATE resumes SET content = $2, language = NULLIF($3, ''), parse_report = $4, parse_status = 'done', updated_at = now()
+		 WHERE id = $1 AND parse_status = 'pending'`, id, content, language, report)
 	if err != nil {
 		return false, MapError(err)
 	}
 	return tag.RowsAffected() == 1, nil
+}
+
+func (r *resumeRepository) GetVersion(ctx context.Context, resumeID, versionID string) (*db.ResumeVersion, error) {
+	ctx, cancel := QueryTimeout(ctx)
+	defer cancel()
+	rows, err := r.store.Conn(ctx).Query(ctx,
+		`SELECT id, resume_id, version_no, content, created_at FROM resume_versions WHERE id = $1 AND resume_id = $2`,
+		versionID, resumeID)
+	if err != nil {
+		return nil, MapError(err)
+	}
+	v, err := pgx.CollectOneRow(rows, pgx.RowToAddrOfStructByName[db.ResumeVersion])
+	return v, MapError(err)
 }
