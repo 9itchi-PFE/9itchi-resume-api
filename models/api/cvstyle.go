@@ -20,6 +20,7 @@ type CVStyle struct {
 	MarginY      float64  `json:"margin_y,omitempty" binding:"omitempty,min=5,max=30"`     // top and bottom, mm
 	NameFont     string   `json:"name_font,omitempty" binding:"omitempty,oneof=sans serif"`
 	BodyFont     string   `json:"body_font,omitempty" binding:"omitempty,oneof=sourcesans lato carlito tinos"` // applies to all body text
+	HeadingBold  *bool    `json:"heading_bold,omitempty"`
 	HeadingCase  string   `json:"heading_case,omitempty" binding:"omitempty,oneof=capitalize uppercase"`
 	DatePosition string   `json:"date_position,omitempty" binding:"omitempty,oneof=right below"`
 	LocationPos   string `json:"location_position,omitempty" binding:"omitempty,oneof=line date"`

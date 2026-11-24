@@ -81,6 +81,17 @@ func pick(chosen, def string) string {
 	return chosen
 }
 
+// headFont is the section heading style: the user's bold choice, else the template's def.
+func (l look) headFont(def string) string {
+	if l.style == nil || l.style.HeadingBold == nil {
+		return def
+	}
+	if *l.style.HeadingBold {
+		return "B"
+	}
+	return ""
+}
+
 func newLook(layout string, s *api.CVStyle) look {
 	def, ok := layoutLooks[layout]
 	if !ok {

@@ -487,7 +487,7 @@ func (d *cv) classic(opts RenderOptions) {
 
 	head := func(t string) {
 		pdf.Ln(2.4)
-		d.font(sans, "", lk.head, lk.col("headings", cvBlue))
+		d.font(sans, lk.headFont(""), lk.head, lk.col("headings", cvBlue))
 		pdf.SetX(d.x)
 		pdf.CellFormat(d.w, d.lh(lk.head)*0.9, cleanText(lk.heading(t)), "", 1, "L", false, 0, "")
 		d.rule(blue, 0.35)
@@ -804,7 +804,7 @@ func (d *cv) modern(opts RenderOptions) {
 	}
 	head := func(t string) {
 		pdf.Ln(3)
-		d.font(d.nameFamily(), "B", lk.head, lk.col("headings", cvNavy))
+		d.font(d.nameFamily(), lk.headFont("B"), lk.head, lk.col("headings", cvNavy))
 		pdf.SetX(d.x)
 		pdf.CellFormat(d.w, d.lh(lk.head), cleanText(lk.heading(t)), "", 1, "L", false, 0, "")
 		pdf.Ln(0.4)
@@ -942,7 +942,7 @@ func (d *cv) compact(opts RenderOptions) {
 	}
 	head := func(t string) {
 		pdf.Ln(2.6)
-		d.font(sans, "B", lk.head, lk.col("headings", cvBlack))
+		d.font(sans, lk.headFont("B"), lk.head, lk.col("headings", cvBlack))
 		pdf.SetX(d.x)
 		pdf.CellFormat(d.w, d.lh(lk.head)*0.9, cleanText(lk.heading(t)), "", 1, "L", false, 0, "")
 		d.rule(rule, 0.3)
