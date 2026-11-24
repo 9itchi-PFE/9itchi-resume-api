@@ -39,7 +39,7 @@ type ResumeContent struct {
 	SectionOrderKeys []string `json:"section_order,omitempty" binding:"max=20,dive,max=20"`
 	// HiddenSections are kept in the content but left out of the preview and every export.
 	HiddenSections []string `json:"hidden_sections,omitempty" binding:"max=20,dive,max=20"`
-	Style            *CVStyle `json:"style,omitempty"`
+	Style          *CVStyle `json:"style,omitempty"`
 }
 
 // AllSkills is the flat skill list followed by the grouped items not already in it.

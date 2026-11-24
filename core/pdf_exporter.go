@@ -536,8 +536,12 @@ func (d *cv) classic(opts RenderOptions) {
 	d.locCol = lk.col("location", ink)
 	bold := func(t string) seg { return seg{text: t, family: sans, style: "B", col: lk.col("entry_title", ink)} }
 	label := func(t string) seg { return seg{text: t, family: sans, style: "B", col: ink} }
-	plain := func(t string) seg { return seg{text: t, family: sans, style: pick(lk.subStyle, ""), col: lk.col("subtitle", ink)} }
-	accented := func(t string) seg { return seg{text: t, family: sans, style: pick(lk.subStyle, ""), col: lk.col("subtitle", cvBlue)} }
+	plain := func(t string) seg {
+		return seg{text: t, family: sans, style: pick(lk.subStyle, ""), col: lk.col("subtitle", ink)}
+	}
+	accented := func(t string) seg {
+		return seg{text: t, family: sans, style: pick(lk.subStyle, ""), col: lk.col("subtitle", cvBlue)}
+	}
 	rightPlain := func() { d.font(sans, pick(lk.dateStyle, ""), eb, lk.col("dates", ink)) }
 	rightBold := func() { d.font(sans, pick(lk.dateStyle, "B"), eb, lk.col("dates", ink)) }
 	rightLoc := func() { d.font(sans, pick(lk.dateStyle, ""), eb, d.locCol) }
@@ -1003,7 +1007,9 @@ func (d *cv) compact(opts RenderOptions) {
 	}
 	bold := func(t string) seg { return seg{text: t, family: sans, style: "B", col: lk.col("entry_title", ink)} }
 	d.locCol = lk.col("location", ink)
-	plain := func(t string) seg { return seg{text: t, family: sans, style: pick(lk.subStyle, ""), col: lk.col("subtitle", ink)} }
+	plain := func(t string) seg {
+		return seg{text: t, family: sans, style: pick(lk.subStyle, ""), col: lk.col("subtitle", ink)}
+	}
 	locSeg := func(t string) seg { return seg{text: t, family: sans, style: pick(lk.subStyle, ""), col: d.locCol} }
 	right := func() { d.font(sans, pick(lk.dateStyle, ""), eb, lk.col("dates", ink)) }
 	sections := map[string]func(){
@@ -1125,7 +1131,7 @@ func (d *cv) textTop(top, height float64, hasPhoto bool, tw float64) float64 {
 	}
 	lk := d.lk
 	h := d.lh(lk.name)
-	if d.c.Contact.Headline != "" && !(lk.inlineHeader() && lk.layoutIsClassic) {
+	if d.c.Contact.Headline != "" && (!lk.inlineHeader() || !lk.layoutIsClassic) {
 		h += d.lh(lk.title)
 	}
 	parts := nonEmpty(d.c.Contact.Email, d.c.Contact.Phone, d.c.Contact.Location)

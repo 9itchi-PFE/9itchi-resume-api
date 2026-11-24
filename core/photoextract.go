@@ -98,7 +98,6 @@ func pdfJPEGs(data []byte) [][]byte {
 			return out
 		}
 		pos := off + i + len(marker)
-		off = pos
 		s := bytes.Index(data[pos:], []byte("stream"))
 		if s < 0 {
 			return out
