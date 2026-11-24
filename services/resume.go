@@ -49,11 +49,25 @@ type ResumeService interface {
 	// GET /resumes/:id/versions: list saved versions (no content)
 	ListVersions(ctx context.Context, userID string, id string) (*api.ListVersionsResponse, *models.ApiError)
 	// POST /resumes/:id/versions: snapshot a version
-	CreateVersion(ctx context.Context, userID string, id string) (*api.VersionResponse, *models.ApiError)
-	// POST /resumes/:id/export: export PDF (docx unsupported)
+	CreateVersion(ctx context.Context, userID string, id string, req api.CreateVersionRequest) (*api.VersionResponse, *models.ApiError)
+	// POST /resumes/:id/export: export PDF, or Word for subscribers
 	ExportResume(ctx context.Context, userID string, id string, req api.ExportResumeRequest) (*api.FileResponse, *models.ApiError)
-	// POST /resumes/:id/ats-check: ATS score and suggestions
-	ATSCheck(ctx context.Context, userID string, id string) (any, *models.ApiError)
+	// POST /resumes/:id/ats-check: the 24 CV rules
+	ATSCheck(ctx context.Context, userID string, id string, req api.ATSCheckRequest) (*api.ATSCheckResponse, *models.ApiError)
+	// GET /resumes/:id/versions/:versionId: one saved version with its content
+	GetVersion(ctx context.Context, userID, id, versionID string) (*api.VersionContentResponse, *models.ApiError)
+	// POST /resumes/:id/versions/:versionId/restore: put a saved version back (the replaced content is saved first)
+	RestoreVersion(ctx context.Context, userID, id, versionID string) (*api.ResumeResponse, *models.ApiError)
+	// POST /resumes/:id/duplicate: copy a CV under a new title (counts against the CV limit)
+	DuplicateResume(ctx context.Context, userID, id string, req api.DuplicateResumeRequest) (*api.ResumeResponse, *models.ApiError)
+	// PUT /resumes/:id/photo: JPEG or PNG, 2 MB max, replaces the previous photo
+	UploadPhoto(ctx context.Context, userID, id string, r io.Reader) *models.ApiError
+	// GET /resumes/:id/photo
+	GetPhoto(ctx context.Context, userID, id string) (*api.FileContent, *models.ApiError)
+	// DELETE /resumes/:id/photo
+	DeletePhoto(ctx context.Context, userID, id string) *models.ApiError
+	// GET /me/downloads: how many CV downloads the user made (the free plan allows one)
+	Downloads(ctx context.Context, userID string) (*api.DownloadsResponse, *models.ApiError)
 	// GET /internal/resumes/:id/pdf: latest exported PDF bytes (email attachments), no user scoping
 	InternalResumePDF(ctx context.Context, id string) (*api.FileContent, *models.ApiError)
 }
@@ -64,7 +78,22 @@ type resumeService struct {
 	files     repositories.FileRepository
 	tx        repositories.Transactor
 	exporters map[string]core.Exporter
+	// parser reads uploaded CVs (ai-api); nil leaves uploads empty with parse_status none.
+	parser core.ResumeParser
+	// quotas enforces the plan limits (payments-api); nil means no limits (tests, local runs without payments).
+	quotas core.QuotaSource
+	// async runs background work; tests replace it to run synchronously.
+	async func(func())
 }
+
+// Option configures the resume service.
+type Option func(*resumeService)
+
+// WithParser enables AI reading of uploaded CVs.
+func WithParser(p core.ResumeParser) Option { return func(s *resumeService) { s.parser = p } }
+
+// WithQuotas enables plan limits (1 CV and 1 branded download on the free plan).
+func WithQuotas(q core.QuotaSource) Option { return func(s *resumeService) { s.quotas = q } }
 
 func NewResumeService(
 	repo repositories.ResumeRepository,
@@ -72,8 +101,14 @@ func NewResumeService(
 	files repositories.FileRepository,
 	tx repositories.Transactor,
 	exporters map[string]core.Exporter,
+	opts ...Option,
 ) ResumeService {
-	return &resumeService{repo: repo, templates: templates, files: files, tx: tx, exporters: exporters}
+	s := &resumeService{repo: repo, templates: templates, files: files, tx: tx, exporters: exporters,
+		async: func(f func()) { go f() }}
+	for _, o := range opts {
+		o(s)
+	}
+	return s
 }
 
 // encodeContent validates and serialises content for the jsonb column.
@@ -138,6 +173,9 @@ func (s *resumeService) UploadResume(ctx context.Context, userID string, filenam
 	if apiErr != nil {
 		return nil, apiErr
 	}
+	if _, apiErr := s.checkResumeQuota(ctx, userID); apiErr != nil {
+		return nil, apiErr
+	}
 	// Read at most limit+1 bytes: the declared size cannot be trusted.
 	data, err := io.ReadAll(io.LimitReader(r, api.MaxUploadBytes+1))
 	if err != nil {
@@ -188,8 +226,15 @@ func (s *resumeService) UploadResume(ctx context.Context, userID string, filenam
 	if err != nil {
 		return nil, repoError(err, "resume not found")
 	}
-	// AI SEAM: once ai-api parsing is wired, trigger it here after the transaction commits
-	// (async, using resume.ID and the stored original) and fill resumes.content from the result.
+	if s.parser != nil {
+		if err := s.repo.SetParseStatus(ctx, resume.ID, db.ParsePending); err != nil {
+			utils.Logger.Error("upload: mark pending", zap.Error(err))
+		} else {
+			resume.ParseStatus = db.ParsePending
+			id := resume.ID
+			s.async(func() { s.readUpload(id, format, data) })
+		}
+	}
 	return &api.UploadResumeResponse{
 		Resume: mapping.ResumeToResponse(resume),
 		File:   mapping.FileMetaToResponse(meta),
@@ -203,22 +248,33 @@ func detectUpload(name string) (format, contentType string, apiErr *models.ApiEr
 		return "pdf", contentTypePDF, nil
 	case ".docx":
 		return "docx", contentTypeDOCX, nil
+	case ".jpg", ".jpeg":
+		return "jpeg", "image/jpeg", nil
+	case ".png":
+		return "png", "image/png", nil
 	}
-	return "", "", newError(http.StatusBadRequest, "only PDF or DOCX files are accepted")
+	return "", "", newError(http.StatusBadRequest, "only PDF, DOCX, JPG or PNG files are accepted")
 }
 
-// hasMagic checks the leading bytes: "%PDF-" for pdf, a zip header ("PK") for docx.
+// hasMagic checks the leading bytes: "%PDF-" for pdf, a zip header ("PK") for docx, the JPEG and PNG signatures.
 func hasMagic(format string, data []byte) bool {
 	switch format {
 	case "pdf":
 		return bytes.HasPrefix(data, []byte("%PDF-"))
 	case "docx":
 		return bytes.HasPrefix(data, []byte("PK\x03\x04"))
+	case "jpeg":
+		return bytes.HasPrefix(data, []byte{0xFF, 0xD8, 0xFF})
+	case "png":
+		return bytes.HasPrefix(data, []byte("\x89PNG\r\n\x1a\n"))
 	}
 	return false
 }
 
 func (s *resumeService) CreateResume(ctx context.Context, userID string, req api.CreateResumeRequest) (*api.ResumeResponse, *models.ApiError) {
+	if _, apiErr := s.checkResumeQuota(ctx, userID); apiErr != nil {
+		return nil, apiErr
+	}
 	if apiErr := validateTitle(req.Title); apiErr != nil {
 		return nil, apiErr
 	}
@@ -268,8 +324,7 @@ func (s *resumeService) GetResume(ctx context.Context, userID string, id string)
 	if err != nil {
 		return nil, repoError(err, "resume not found")
 	}
-	resp := mapping.ResumeToResponse(res)
-	return &resp, nil
+	return s.response(ctx, res), nil
 }
 
 func (s *resumeService) UpdateResume(ctx context.Context, userID string, id string, req api.UpdateResumeRequest) (*api.ResumeResponse, *models.ApiError) {
@@ -328,7 +383,7 @@ func (s *resumeService) ListVersions(ctx context.Context, userID string, id stri
 	return out, nil
 }
 
-func (s *resumeService) CreateVersion(ctx context.Context, userID string, id string) (*api.VersionResponse, *models.ApiError) {
+func (s *resumeService) CreateVersion(ctx context.Context, userID string, id string, req api.CreateVersionRequest) (*api.VersionResponse, *models.ApiError) {
 	if !isUUID(id) {
 		return nil, newError(http.StatusBadRequest, "invalid resume id")
 	}
@@ -338,7 +393,7 @@ func (s *resumeService) CreateVersion(ctx context.Context, userID string, id str
 		if err != nil {
 			return err
 		}
-		meta, err = s.repo.InsertVersion(ctx, id, versionNo, content)
+		meta, err = s.repo.InsertVersion(ctx, id, versionNo, req.Label, content)
 		return err
 	})
 	if err != nil {
@@ -353,16 +408,21 @@ func (s *resumeService) ExportResume(ctx context.Context, userID string, id stri
 		return nil, newError(http.StatusBadRequest, "invalid resume id")
 	}
 	format := strings.ToLower(strings.TrimSpace(req.Format))
-	if format == "docx" {
-		return nil, newError(http.StatusBadRequest, "docx export is not supported yet, use pdf")
-	}
 	exporter, ok := s.exporters[format]
 	if !ok {
-		return nil, newError(http.StatusBadRequest, "unsupported export format, use pdf")
+		return nil, newError(http.StatusBadRequest, "unsupported export format, use pdf or docx")
 	}
 	res, err := s.repo.Get(ctx, userID, id)
 	if err != nil {
 		return nil, repoError(err, "resume not found")
+	}
+	branded, apiErr := s.checkDownloadQuota(ctx, userID)
+	if apiErr != nil {
+		return nil, apiErr
+	}
+	// The Word file is for subscribers (screen 4.1 download dialog); free downloads are branded PDFs.
+	if format == "docx" && branded {
+		return nil, newError(http.StatusPaymentRequired, errWordForSubscribers)
 	}
 	layout := ""
 	if res.TemplateID != nil {
@@ -370,21 +430,41 @@ func (s *resumeService) ExportResume(ctx context.Context, userID string, id stri
 			layout = t.Layout
 		}
 	}
-	data, err := exporter.Render(ctx, mapping.ParseContent(res.Content), layout)
+	content := mapping.ParseContent(res.Content)
+	lang := "fr"
+	if res.Language != nil && *res.Language == "en" {
+		lang = "en"
+	}
+	opts := core.RenderOptions{Language: lang, Branded: branded}
+	if layout != "compact" {
+		if p, err := s.files.LatestPhoto(ctx, res.ID); err == nil {
+			opts.Photo, opts.PhotoFormat = p.Data, p.Format
+		} else if !errors.Is(err, repositories.ErrNotFound) {
+			return nil, repoError(err, "resume not found")
+		}
+	}
+	data, err := exporter.Render(ctx, content, layout, opts)
 	if err != nil {
 		utils.Logger.Error("export render failed", zap.Error(err))
 		return nil, newError(http.StatusInternalServerError, "export failed")
 	}
 	sum := sha256.Sum256(data)
-	meta, err := s.files.Create(ctx, &db.ResumeFile{
-		ResumeID:    res.ID,
-		Kind:        "export",
-		Format:      format,
-		Filename:    sanitizeFilename(res.Title) + "." + format,
-		ContentType: contentTypePDF,
-		SizeBytes:   int64(len(data)),
-		SHA256:      hex.EncodeToString(sum[:]),
-		Data:        data,
+	var meta *db.ResumeFileMeta
+	err = s.tx.WithTx(ctx, func(ctx context.Context) error {
+		var err error
+		if meta, err = s.files.Create(ctx, &db.ResumeFile{
+			ResumeID:    res.ID,
+			Kind:        "export",
+			Format:      format,
+			Filename:    exportFilename(content.Contact.Name, res.Title) + "." + format,
+			ContentType: exportContentType(format),
+			SizeBytes:   int64(len(data)),
+			SHA256:      hex.EncodeToString(sum[:]),
+			Data:        data,
+		}); err != nil {
+			return err
+		}
+		return s.files.RecordDownload(ctx, userID, res.ID, format)
 	})
 	if err != nil {
 		return nil, repoError(err, "resume not found")
@@ -393,8 +473,41 @@ func (s *resumeService) ExportResume(ctx context.Context, userID string, id stri
 	return &resp, nil
 }
 
-func (s *resumeService) ATSCheck(_ context.Context, _ string, _ string) (any, *models.ApiError) {
-	return nil, models.NotImplemented()
+func (s *resumeService) ATSCheck(ctx context.Context, userID string, id string, req api.ATSCheckRequest) (*api.ATSCheckResponse, *models.ApiError) {
+	if !isUUID(id) {
+		return nil, newError(http.StatusBadRequest, "invalid resume id")
+	}
+	res, err := s.repo.Get(ctx, userID, id)
+	if err != nil {
+		return nil, repoError(err, "resume not found")
+	}
+	content := mapping.ParseContent(res.Content)
+	layout := ""
+	if res.TemplateID != nil {
+		if t, err := s.templates.Get(ctx, *res.TemplateID); err == nil {
+			layout = t.Layout
+		}
+	}
+	lang := ""
+	if res.Language != nil {
+		lang = *res.Language
+	}
+	headings := "fr"
+	if lang == "en" {
+		headings = "en"
+	}
+	filename := ""
+	if name := exportFilename(content.Contact.Name, ""); name != "" {
+		filename = name + ".pdf"
+	}
+	out := core.CheckATS(core.ATSInput{
+		Content:        content,
+		Language:       lang,
+		TargetLanguage: req.TargetLanguage,
+		ExportFilename: filename,
+		Rendered:       core.RenderForCheck(ctx, content, layout, headings),
+	})
+	return &out, nil
 }
 
 func (s *resumeService) InternalResumePDF(ctx context.Context, id string) (*api.FileContent, *models.ApiError) {
@@ -406,4 +519,11 @@ func (s *resumeService) InternalResumePDF(ctx context.Context, id string) (*api.
 		return nil, repoError(err, "no exported pdf")
 	}
 	return &api.FileContent{Filename: f.Filename, ContentType: f.ContentType, Data: f.Data}, nil
+}
+
+func exportContentType(format string) string {
+	if format == "docx" {
+		return contentTypeDOCX
+	}
+	return contentTypePDF
 }

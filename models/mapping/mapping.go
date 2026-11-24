@@ -29,6 +29,9 @@ func NormalizeContent(c api.ResumeContent) api.ResumeContent {
 	if c.Languages == nil {
 		c.Languages = []string{}
 	}
+	if c.Certifications == nil {
+		c.Certifications = []api.Certification{}
+	}
 	return c
 }
 
@@ -43,13 +46,16 @@ func ParseContent(raw []byte) api.ResumeContent {
 
 func ResumeToResponse(r *db.Resume) api.ResumeResponse {
 	return api.ResumeResponse{
-		ID:         r.ID,
-		Title:      r.Title,
-		TemplateID: r.TemplateID,
-		Version:    r.Version,
-		Content:    ParseContent(r.Content),
-		CreatedAt:  r.CreatedAt,
-		UpdatedAt:  r.UpdatedAt,
+		ID:          r.ID,
+		Title:       r.Title,
+		TemplateID:  r.TemplateID,
+		Version:     r.Version,
+		ParseStatus: r.ParseStatus,
+		Language:    r.Language,
+		ParseReport: ParseReport(r.ParseReport),
+		Content:     ParseContent(r.Content),
+		CreatedAt:   r.CreatedAt,
+		UpdatedAt:   r.UpdatedAt,
 	}
 }
 
@@ -65,7 +71,7 @@ func ResumeSummaryToItem(r db.ResumeSummary) api.ResumeListItem {
 }
 
 func VersionToResponse(v db.ResumeVersionMeta) api.VersionResponse {
-	return api.VersionResponse{ID: v.ID, VersionNo: v.VersionNo, CreatedAt: v.CreatedAt}
+	return api.VersionResponse{ID: v.ID, VersionNo: v.VersionNo, Label: v.Label, CreatedAt: v.CreatedAt}
 }
 
 func TemplateToResponse(t *db.Template) api.TemplateResponse {
@@ -92,4 +98,19 @@ func FileMetaToResponse(f *db.ResumeFileMeta) api.FileResponse {
 		SHA256:      f.SHA256,
 		CreatedAt:   f.CreatedAt,
 	}
+}
+
+// ParseReport decodes resumes.parse_report (nil when absent or invalid).
+func ParseReport(raw []byte) *api.ParseReport {
+	if len(raw) == 0 {
+		return nil
+	}
+	var rep api.ParseReport
+	if json.Unmarshal(raw, &rep) != nil {
+		return nil
+	}
+	if rep.Removed == nil {
+		rep.Removed = []string{}
+	}
+	return &rep
 }

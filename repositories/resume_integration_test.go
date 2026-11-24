@@ -106,7 +106,7 @@ func TestVersionsInTransaction(t *testing.T) {
 			if err != nil {
 				return err
 			}
-			_, err = repo.InsertVersion(ctx, r.ID, no, content)
+			_, err = repo.InsertVersion(ctx, r.ID, no, "", content)
 			return err
 		})
 	}
@@ -134,7 +134,7 @@ func TestVersionsInTransaction(t *testing.T) {
 		if _, _, err := repo.BumpVersion(ctx, userA, r.ID); err != nil {
 			return err
 		}
-		_, err := repo.InsertVersion(ctx, r.ID, 1, []byte(`{}`))
+		_, err := repo.InsertVersion(ctx, r.ID, 1, "", []byte(`{}`))
 		return err
 	})
 	assert.ErrorIs(t, err, ErrConflict)

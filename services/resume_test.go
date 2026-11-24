@@ -3,6 +3,7 @@ package services
 import (
 	"bytes"
 	"context"
+	"errors"
 	"net/http"
 	"strings"
 	"testing"
@@ -149,17 +150,18 @@ func TestCreateVersionUsesBumpedNumber(t *testing.T) {
 	f := newFixture()
 	f.resumes.BumpVersionFn = func(context.Context, string, string) (int, []byte, error) { return 3, []byte(`{}`), nil }
 	var gotNo int
-	f.resumes.InsertVersionFn = func(_ context.Context, id string, no int, _ []byte) (*db.ResumeVersionMeta, error) {
+	f.resumes.InsertVersionFn = func(_ context.Context, id string, no int, label string, _ []byte) (*db.ResumeVersionMeta, error) {
 		gotNo = no
-		return &db.ResumeVersionMeta{ID: "v", ResumeID: id, VersionNo: no}, nil
+		return &db.ResumeVersionMeta{ID: "v", ResumeID: id, VersionNo: no, Label: label}, nil
 	}
-	got, apiErr := f.svc.CreateVersion(context.Background(), uid, rid)
+	got, apiErr := f.svc.CreateVersion(context.Background(), uid, rid, api.CreateVersionRequest{Label: "template_changed"})
 	require.Nil(t, apiErr)
 	assert.Equal(t, 3, gotNo)
 	assert.Equal(t, 3, got.VersionNo)
+	assert.Equal(t, "template_changed", got.Label)
 
 	f.resumes.BumpVersionFn = func(context.Context, string, string) (int, []byte, error) { return 0, nil, repositories.ErrNotFound }
-	_, apiErr = f.svc.CreateVersion(context.Background(), "other", rid)
+	_, apiErr = f.svc.CreateVersion(context.Background(), "other", rid, api.CreateVersionRequest{})
 	require.NotNil(t, apiErr)
 	assert.Equal(t, http.StatusNotFound, apiErr.Code)
 }
@@ -267,11 +269,31 @@ func TestExportResume(t *testing.T) {
 		assert.True(t, bytes.HasPrefix(stored.Data, []byte("%PDF-")))
 		assert.Equal(t, int64(len(stored.Data)), stored.SizeBytes)
 	})
-	t.Run("docx unsupported", func(t *testing.T) {
-		_, apiErr := newF().svc.ExportResume(context.Background(), uid, rid, api.ExportResumeRequest{Format: "docx"})
+	t.Run("docx with the photo", func(t *testing.T) {
+		f := newF()
+		var stored *db.ResumeFile
+		f.files.CreateFn = func(_ context.Context, fl *db.ResumeFile) (*db.ResumeFileMeta, error) {
+			stored = fl
+			return &db.ResumeFileMeta{ID: "f1", Kind: fl.Kind, Format: fl.Format, Filename: fl.Filename}, nil
+		}
+		asked := false
+		f.files.LatestPhotoFn = func(context.Context, string) (*db.ResumeFile, error) {
+			asked = true
+			return nil, repositories.ErrNotFound
+		}
+		_, apiErr := f.svc.ExportResume(context.Background(), uid, rid, api.ExportResumeRequest{Format: "docx"})
+		require.Nil(t, apiErr)
+		assert.True(t, asked, "classic shows the photo")
+		assert.Equal(t, "My CV.docx", stored.Filename)
+		assert.Equal(t, "application/vnd.openxmlformats-officedocument.wordprocessingml.document", stored.ContentType)
+		assert.True(t, bytes.HasPrefix(stored.Data, []byte("PK")))
+	})
+	t.Run("photo read failure", func(t *testing.T) {
+		f := newF()
+		f.files.LatestPhotoFn = func(context.Context, string) (*db.ResumeFile, error) { return nil, errors.New("db down") }
+		_, apiErr := f.svc.ExportResume(context.Background(), uid, rid, api.ExportResumeRequest{Format: "pdf"})
 		require.NotNil(t, apiErr)
-		assert.Equal(t, http.StatusBadRequest, apiErr.Code)
-		assert.Contains(t, apiErr.Error.Error(), "docx")
+		assert.Equal(t, http.StatusInternalServerError, apiErr.Code)
 	})
 	t.Run("unknown format", func(t *testing.T) {
 		_, apiErr := newF().svc.ExportResume(context.Background(), uid, rid, api.ExportResumeRequest{Format: "odt"})
@@ -285,16 +307,40 @@ func TestExportResume(t *testing.T) {
 	})
 }
 
-func TestExportRegistryOnlyPDF(t *testing.T) {
+func TestExportRegistry(t *testing.T) {
 	reg := core.DefaultExporters()
-	assert.Len(t, reg, 1)
+	assert.Len(t, reg, 2)
 	assert.Contains(t, reg, "pdf")
+	assert.Contains(t, reg, "docx")
 }
 
-func TestATSCheckStaysNotImplemented(t *testing.T) {
-	_, apiErr := newFixture().svc.ATSCheck(context.Background(), uid, rid)
+func TestATSCheckService(t *testing.T) {
+	f := newFixture()
+	f.resumes.GetFn = func(_ context.Context, userID, id string) (*db.Resume, error) {
+		if userID != uid {
+			return nil, repositories.ErrNotFound
+		}
+		lang := "fr"
+		return &db.Resume{ID: id, Language: &lang, Content: []byte(`{"contact":{"name":"Ines Mansour","email":"i@x.tn","location":"Sfax"}}`)}, nil
+	}
+	res, apiErr := f.svc.ATSCheck(context.Background(), uid, rid, api.ATSCheckRequest{TargetLanguage: "en"})
+	require.Nil(t, apiErr)
+	assert.Equal(t, 24, res.Total)
+	byID := map[string]api.ATSRuleResult{}
+	for _, r := range res.Rules {
+		byID[r.ID] = r
+	}
+	assert.Equal(t, "contact.phone", byID["contact_details"].Where)
+	assert.Equal(t, "ines_mansour.pdf", byID["file_name"].Now)
+	assert.Equal(t, "fix", byID["company_language"].Status)
+	assert.Equal(t, "ok", byID["one_page"].Status)
+
+	_, apiErr = f.svc.ATSCheck(context.Background(), "other", rid, api.ATSCheckRequest{})
 	require.NotNil(t, apiErr)
-	assert.Equal(t, http.StatusNotImplemented, apiErr.Code)
+	assert.Equal(t, http.StatusNotFound, apiErr.Code)
+	_, apiErr = f.svc.ATSCheck(context.Background(), uid, "nope", api.ATSCheckRequest{})
+	require.NotNil(t, apiErr)
+	assert.Equal(t, http.StatusBadRequest, apiErr.Code)
 }
 
 func TestInternalResumePDF(t *testing.T) {

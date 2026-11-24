@@ -28,7 +28,7 @@ func sampleContent() api.ResumeContent {
 func TestPDFExporterOutputsPDF(t *testing.T) {
 	for _, layout := range []string{"classic", "modern", "compact", "unknown", ""} {
 		t.Run(layout, func(t *testing.T) {
-			out, err := NewPDFExporter().Render(context.Background(), sampleContent(), layout)
+			out, err := NewPDFExporter().Render(context.Background(), sampleContent(), layout, RenderOptions{})
 			require.NoError(t, err)
 			assert.True(t, bytes.HasPrefix(out, []byte("%PDF-")))
 		})
@@ -40,30 +40,31 @@ func TestPDFExporterEmptyAndHostileContent(t *testing.T) {
 		Summary: "<script>alert(1)</script> (unbalanced \\ ) \x00 \u202e emoji \U0001F600 中文",
 		Skills:  []string{strings.Repeat("W", 5000)},
 	}
-	out, err := NewPDFExporter().Render(context.Background(), c, "classic")
+	out, err := NewPDFExporter().Render(context.Background(), c, "classic", RenderOptions{})
 	require.NoError(t, err)
 	assert.True(t, bytes.HasPrefix(out, []byte("%PDF-")))
 
-	out, err = NewPDFExporter().Render(context.Background(), api.ResumeContent{}, "classic")
+	out, err = NewPDFExporter().Render(context.Background(), api.ResumeContent{}, "classic", RenderOptions{})
 	require.NoError(t, err)
 	assert.True(t, bytes.HasPrefix(out, []byte("%PDF-")))
 }
 
-func TestPDFText(t *testing.T) {
-	assert.Equal(t, "a?b?c", pdfText("a中b\U0001F600c"))
-	assert.Equal(t, "a b c", pdfText("a\tb\nc"))
-	assert.Equal(t, "caf\xe9", pdfText("café"))
+func TestCleanText(t *testing.T) {
+	assert.Equal(t, "a?b?c", cleanText("a中b\U0001F600c"))
+	assert.Equal(t, "a b c", cleanText("a\tb\nc"))
+	assert.Equal(t, "Élève — café · ok", cleanText("Élève — café · ok"))
 }
 
 func TestPDFExporterCanceledContext(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	_, err := NewPDFExporter().Render(ctx, sampleContent(), "classic")
+	_, err := NewPDFExporter().Render(ctx, sampleContent(), "classic", RenderOptions{})
 	assert.Error(t, err)
 }
 
 func TestDefaultExporters(t *testing.T) {
 	reg := DefaultExporters()
-	require.Len(t, reg, 1)
+	require.Len(t, reg, 2)
 	assert.Equal(t, "pdf", reg["pdf"].Format())
+	assert.Equal(t, "docx", reg["docx"].Format())
 }

@@ -11,24 +11,77 @@ const (
 
 // ResumeContent is the documented schema of resumes.content (jsonb). Template switches never touch it.
 //
-//	{"contact":{"name","email","phone","location","links":["https://..."]},
+//	{"contact":{"name","headline","email","phone","location","links":["https://..."]},
 //	 "summary":"...",
-//	 "experience":[{"company","title","start","end","description":["bullet"]}],
-//	 "education":[{"school","degree","start","end"}],
-//	 "skills":["Go"], "languages":["English"]}
+//	 "experience":[{"company","title","kind","location","start","end","description":["bullet"]}],
+//	 "education":[{"school","degree","location","start","end"}],
+//	 "projects":[{"name","tech","year","description":["bullet"]}],
+//	 "skills":["Go"], "skill_groups":[{"label":"Langages","items":["C++"]}],
+//	 "languages":["Arabe: Langue maternelle"],
+//	 "certifications":[{"name","issuer","year"}],
+//	 "extra":[{"title":"Clubs","items":["..."]}]}
 //
-// Dates (start/end) are free text such as "2021-03" or "Present". The whole document is capped at MaxContentBytes.
+// Dates (start/end) are free text such as "2021-03" or "Present". A language may carry its level after a colon.
+// skill_groups, when present, is what the templates show; skills stays the flat list. The new fields are optional,
+// so older documents still parse. The whole document is capped at MaxContentBytes.
 type ResumeContent struct {
-	Contact    Contact      `json:"contact"`
-	Summary    string       `json:"summary" binding:"max=5000"`
-	Experience []Experience `json:"experience" binding:"max=50,dive"`
-	Education  []Education  `json:"education" binding:"max=30,dive"`
-	Skills     []string     `json:"skills" binding:"max=100,dive,max=100"`
-	Languages  []string     `json:"languages" binding:"max=30,dive,max=100"`
+	Contact        Contact         `json:"contact"`
+	Summary        string          `json:"summary" binding:"max=5000"`
+	Experience     []Experience    `json:"experience" binding:"max=50,dive"`
+	Education      []Education     `json:"education" binding:"max=30,dive"`
+	Skills         []string        `json:"skills" binding:"max=100,dive,max=100"`
+	Languages      []string        `json:"languages" binding:"max=30,dive,max=100"`
+	Certifications []Certification `json:"certifications" binding:"max=30,dive"`
+	Projects       []Project       `json:"projects,omitempty" binding:"max=30,dive"`
+	SkillGroups    []SkillGroup    `json:"skill_groups,omitempty" binding:"max=10,dive"`
+	Extra          []ExtraSection  `json:"extra,omitempty" binding:"max=10,dive"`
+}
+
+// AllSkills is the flat skill list followed by the grouped items not already in it.
+func (c ResumeContent) AllSkills() []string {
+	out := append([]string(nil), c.Skills...)
+	seen := map[string]bool{}
+	for _, s := range c.Skills {
+		seen[s] = true
+	}
+	for _, g := range c.SkillGroups {
+		for _, s := range g.Items {
+			if !seen[s] {
+				seen[s] = true
+				out = append(out, s)
+			}
+		}
+	}
+	return out
+}
+
+type Project struct {
+	Name        string   `json:"name" binding:"max=200"`
+	Tech        string   `json:"tech" binding:"max=200"`
+	Year        string   `json:"year" binding:"max=30"`
+	Description []string `json:"description" binding:"max=30,dive,max=1000"`
+}
+
+type SkillGroup struct {
+	Label string   `json:"label" binding:"max=100"`
+	Items []string `json:"items" binding:"max=50,dive,max=100"`
+}
+
+// ExtraSection is a section added with "+ Ajouter une section" (clubs, prix, bénévolat...).
+type ExtraSection struct {
+	Title string   `json:"title" binding:"max=100"`
+	Items []string `json:"items" binding:"max=30,dive,max=1000"`
+}
+
+type Certification struct {
+	Name   string `json:"name" binding:"max=200"`
+	Issuer string `json:"issuer" binding:"max=200"`
+	Year   string `json:"year" binding:"max=30"`
 }
 
 type Contact struct {
 	Name     string   `json:"name" binding:"max=200"`
+	Headline string   `json:"headline,omitempty" binding:"max=200"`
 	Email    string   `json:"email" binding:"max=200"`
 	Phone    string   `json:"phone" binding:"max=50"`
 	Location string   `json:"location" binding:"max=200"`
@@ -38,16 +91,19 @@ type Contact struct {
 type Experience struct {
 	Company     string   `json:"company" binding:"max=200"`
 	Title       string   `json:"title" binding:"max=200"`
+	Kind        string   `json:"kind,omitempty" binding:"max=100"`
+	Location    string   `json:"location,omitempty" binding:"max=200"`
 	Start       string   `json:"start" binding:"max=30"`
 	End         string   `json:"end" binding:"max=30"`
 	Description []string `json:"description" binding:"max=30,dive,max=1000"`
 }
 
 type Education struct {
-	School string `json:"school" binding:"max=200"`
-	Degree string `json:"degree" binding:"max=200"`
-	Start  string `json:"start" binding:"max=30"`
-	End    string `json:"end" binding:"max=30"`
+	School   string `json:"school" binding:"max=200"`
+	Degree   string `json:"degree" binding:"max=200"`
+	Location string `json:"location,omitempty" binding:"max=200"`
+	Start    string `json:"start" binding:"max=30"`
+	End      string `json:"end" binding:"max=30"`
 }
 
 // CreateResumeRequest is the body of POST /resumes.
@@ -71,13 +127,20 @@ type ExportResumeRequest struct {
 }
 
 type ResumeResponse struct {
-	ID         string        `json:"id"`
-	Title      string        `json:"title"`
-	TemplateID *string       `json:"template_id"`
-	Version    int           `json:"version"`
-	Content    ResumeContent `json:"content"`
-	CreatedAt  time.Time     `json:"created_at"`
-	UpdatedAt  time.Time     `json:"updated_at"`
+	ID         string  `json:"id"`
+	Title      string  `json:"title"`
+	TemplateID *string `json:"template_id"`
+	Version    int     `json:"version"`
+	// ParseStatus is none|pending|done|failed while an uploaded CV is read; poll GET /resumes/:id until it leaves pending.
+	ParseStatus string  `json:"parse_status"`
+	Language    *string `json:"language"`
+	// ParseReport says what the reading changed (screen 1.2c); null until an upload is read.
+	ParseReport *ParseReport `json:"parse_report"`
+	// HasPhoto is true when a photo was uploaded (GET /resumes/:id/photo).
+	HasPhoto  bool          `json:"has_photo"`
+	Content   ResumeContent `json:"content"`
+	CreatedAt time.Time     `json:"created_at"`
+	UpdatedAt time.Time     `json:"updated_at"`
 }
 
 // ResumeListItem is a resume without content.
@@ -100,7 +163,14 @@ type ListResumesResponse struct {
 type VersionResponse struct {
 	ID        string    `json:"id"`
 	VersionNo int       `json:"version_no"`
+	Label     string    `json:"label"`
 	CreatedAt time.Time `json:"created_at"`
+}
+
+// CreateVersionRequest is the optional body of POST /resumes/:id/versions: a short key for the history tab
+// (bullet_rewritten, template_changed, section_added, manual...), translated by the client.
+type CreateVersionRequest struct {
+	Label string `json:"label" binding:"omitempty,max=100,printascii"`
 }
 
 type ListVersionsResponse struct {
@@ -111,4 +181,60 @@ type ListVersionsResponse struct {
 type UploadResumeResponse struct {
 	Resume ResumeResponse `json:"resume"`
 	File   FileResponse   `json:"file"`
+}
+
+// ATSCheckRequest is the optional body of POST /resumes/:id/ats-check.
+type ATSCheckRequest struct {
+	// TargetLanguage is the language of the company the student applies to (rule company_language).
+	TargetLanguage string `json:"target_language" binding:"omitempty,oneof=fr en ar"`
+}
+
+// ATSFinding points at the text that breaks a rule.
+type ATSFinding struct {
+	Where string `json:"where,omitempty"`
+	Was   string `json:"was,omitempty"`
+	Now   string `json:"now,omitempty"`
+}
+
+// ATSRuleResult is one of the 24 rules: status ok|fix|tip; Where/Was/Now are set on fix (Now also on file_name).
+type ATSRuleResult struct {
+	ID     string `json:"id"`
+	Group  string `json:"group"`
+	Status string `json:"status"`
+	ATSFinding
+}
+
+// ATSCheckResponse is the result of the 24 rules (screen 4.2).
+type ATSCheckResponse struct {
+	Passed int             `json:"passed"`
+	Total  int             `json:"total"`
+	ToFix  int             `json:"to_fix"`
+	Rules  []ATSRuleResult `json:"rules"`
+}
+
+// ParseReport describes the reading of an uploaded CV.
+type ParseReport struct {
+	// Pages of the uploaded file (0 for DOCX) and how long the reading took.
+	Pages   int `json:"pages"`
+	Seconds int `json:"seconds"`
+	// Rewritten lines now start with a past-tense verb; Removed lists personal details left out
+	// (age, birth_date, nationality, marital_status, full_address).
+	Rewritten int      `json:"rewritten"`
+	Removed   []string `json:"removed"`
+}
+
+// VersionContentResponse is one saved version with its content.
+type VersionContentResponse struct {
+	VersionResponse
+	Content ResumeContent `json:"content"`
+}
+
+// DownloadsResponse says how many CVs the user downloaded, so the client opens the right dialog.
+type DownloadsResponse struct {
+	Used int `json:"used"`
+}
+
+// DuplicateResumeRequest is the body of POST /resumes/:id/duplicate.
+type DuplicateResumeRequest struct {
+	Title string `json:"title" binding:"required,max=200"`
 }

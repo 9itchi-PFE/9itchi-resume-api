@@ -21,6 +21,7 @@ import (
 
 // stubResumeSvc embeds the interface; tests set only the funcs they call.
 type stubResumeSvc struct {
+	atsReq api.ATSCheckRequest
 	services.ResumeService
 	upload func(ctx context.Context, userID, filename string, size int64, r io.Reader) (*api.UploadResumeResponse, *models.ApiError)
 	create func(req api.CreateResumeRequest) (*api.ResumeResponse, *models.ApiError)
@@ -44,8 +45,9 @@ func (s *stubResumeSvc) InternalResumePDF(context.Context, string) (*api.FileCon
 	return s.pdf()
 }
 
-func (s *stubResumeSvc) ATSCheck(context.Context, string, string) (any, *models.ApiError) {
-	return nil, models.NotImplemented()
+func (s *stubResumeSvc) ATSCheck(_ context.Context, _, _ string, req api.ATSCheckRequest) (*api.ATSCheckResponse, *models.ApiError) {
+	s.atsReq = req
+	return &api.ATSCheckResponse{Passed: 23, Total: 24, ToFix: 1, Rules: []api.ATSRuleResult{}}, nil
 }
 
 func newRouter(h gin.HandlerFunc, method, path string) *gin.Engine {
@@ -196,9 +198,24 @@ func TestInternalResumePDFHandler(t *testing.T) {
 	assert.Equal(t, http.StatusNotFound, w.Code)
 }
 
-func TestATSCheckHandlerStays501(t *testing.T) {
-	r := newRouter(ATSCheck(&stubResumeSvc{}), http.MethodPost, "/resumes/:id/ats-check")
+func TestATSCheckHandler(t *testing.T) {
+	svc := &stubResumeSvc{}
+	r := newRouter(ATSCheck(svc), http.MethodPost, "/resumes/:id/ats-check")
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/resumes/x/ats-check", nil))
-	assert.Equal(t, http.StatusNotImplemented, w.Code)
+	assert.Equal(t, http.StatusOK, w.Code, "the body is optional")
+	assert.Contains(t, w.Body.String(), `"to_fix":1`)
+
+	w = httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/resumes/x/ats-check", strings.NewReader(`{"target_language":"en"}`))
+	req.Header.Set("Content-Type", "application/json")
+	r.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "en", svc.atsReq.TargetLanguage)
+
+	w = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPost, "/resumes/x/ats-check", strings.NewReader(`{"target_language":"de"}`))
+	req.Header.Set("Content-Type", "application/json")
+	r.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusBadRequest, w.Code)
 }
