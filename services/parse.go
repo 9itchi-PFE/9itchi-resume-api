@@ -2,6 +2,8 @@ package services
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"time"
 
@@ -75,5 +77,28 @@ func (s *resumeService) readUpload(resumeID, format string, data []byte) {
 	}
 	if !applied {
 		utils.Logger.Info("cv reading discarded: edited meanwhile", zap.String("resume_id", resumeID))
+		return
+	}
+	s.importPhoto(ctx, resumeID, format, data)
+}
+
+// importPhoto keeps the picture embedded in the uploaded CV as the CV photo, unless the user already set one.
+func (s *resumeService) importPhoto(ctx context.Context, resumeID, format string, data []byte) {
+	if format == "jpeg" || format == "png" {
+		return
+	}
+	photo := core.ExtractPhoto(format, data)
+	if photo == nil {
+		return
+	}
+	if has, err := s.files.HasPhoto(ctx, resumeID); err != nil || has {
+		return
+	}
+	sum := sha256.Sum256(photo)
+	if _, err := s.files.Create(ctx, &db.ResumeFile{
+		ResumeID: resumeID, Kind: "photo", Format: "jpeg", Filename: "photo.jpeg", ContentType: "image/jpeg",
+		SizeBytes: int64(len(photo)), SHA256: hex.EncodeToString(sum[:]), Data: photo,
+	}); err != nil {
+		utils.Logger.Warn("cv reading: store photo", zap.String("resume_id", resumeID), zap.Error(err))
 	}
 }
