@@ -76,10 +76,14 @@ func TestCountsForQuotas(t *testing.T) {
 			SHA256: "0000000000000000000000000000000000000000000000000000000000000000", Data: []byte("pdf")})
 		require.NoError(t, err)
 	}
-	add(a.ID, "export")
-	add(b.ID, "export")
 	add(b.ID, "original")
+	require.NoError(t, files.RecordDownload(ctx, u1, a.ID, "pdf"))
+	require.NoError(t, files.RecordDownload(ctx, u1, b.ID, "pdf"))
 	n, err = files.CountExportsByUser(ctx, u1)
 	require.NoError(t, err)
-	assert.Equal(t, 2, n, "originals are not downloads")
+	assert.Equal(t, 2, n)
+
+	require.NoError(t, resumes.Delete(ctx, u1, a.ID))
+	n, _ = files.CountExportsByUser(ctx, u1)
+	assert.Equal(t, 2, n, "deleting a CV does not give the free download back")
 }

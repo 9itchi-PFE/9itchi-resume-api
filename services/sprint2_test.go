@@ -193,3 +193,22 @@ func TestExportFilename(t *testing.T) {
 	assert.Equal(t, "My CV", exportFilename("", "My CV"))
 	assert.Equal(t, "My CV", exportFilename("محمد", "My CV"), "falls back to the title without latin letters")
 }
+
+func TestExportRecordsTheDownload(t *testing.T) {
+	f, _ := newSprint2Fixture()
+	f.resumes.GetFn = func(_ context.Context, _, id string) (*db.Resume, error) {
+		return &db.Resume{ID: id, Title: "CV", Content: []byte(`{}`)}, nil
+	}
+	var recorded []string
+	f.files.RecordDownloadFn = func(_ context.Context, userID, resumeID, format string) error {
+		recorded = append(recorded, userID+"/"+resumeID+"/"+format)
+		return nil
+	}
+	_, apiErr := f.svc.ExportResume(context.Background(), uid, rid, api.ExportResumeRequest{Format: "pdf"})
+	require.Nil(t, apiErr)
+	assert.Equal(t, []string{uid + "/" + rid + "/pdf"}, recorded)
+
+	f.files.RecordDownloadFn = func(context.Context, string, string, string) error { return errors.New("db down") }
+	_, apiErr = f.svc.ExportResume(context.Background(), uid, rid, api.ExportResumeRequest{Format: "pdf"})
+	require.NotNil(t, apiErr, "no download without its record")
+}

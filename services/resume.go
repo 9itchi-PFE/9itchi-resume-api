@@ -419,15 +419,22 @@ func (s *resumeService) ExportResume(ctx context.Context, userID string, id stri
 		return nil, newError(http.StatusInternalServerError, "export failed")
 	}
 	sum := sha256.Sum256(data)
-	meta, err := s.files.Create(ctx, &db.ResumeFile{
-		ResumeID:    res.ID,
-		Kind:        "export",
-		Format:      format,
-		Filename:    exportFilename(content.Contact.Name, res.Title) + "." + format,
-		ContentType: contentTypePDF,
-		SizeBytes:   int64(len(data)),
-		SHA256:      hex.EncodeToString(sum[:]),
-		Data:        data,
+	var meta *db.ResumeFileMeta
+	err = s.tx.WithTx(ctx, func(ctx context.Context) error {
+		var err error
+		if meta, err = s.files.Create(ctx, &db.ResumeFile{
+			ResumeID:    res.ID,
+			Kind:        "export",
+			Format:      format,
+			Filename:    exportFilename(content.Contact.Name, res.Title) + "." + format,
+			ContentType: contentTypePDF,
+			SizeBytes:   int64(len(data)),
+			SHA256:      hex.EncodeToString(sum[:]),
+			Data:        data,
+		}); err != nil {
+			return err
+		}
+		return s.files.RecordDownload(ctx, userID, res.ID, format)
 	})
 	if err != nil {
 		return nil, repoError(err, "resume not found")

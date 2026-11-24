@@ -164,6 +164,14 @@ type FileRepo struct {
 	DeleteFn             func(ctx context.Context, resumeID, fileID string) error
 	LatestExportFn       func(ctx context.Context, resumeID, format string) (*db.ResumeFile, error)
 	CountExportsByUserFn func(ctx context.Context, userID string) (int, error)
+	RecordDownloadFn     func(ctx context.Context, userID, resumeID, format string) error
+}
+
+func (m *FileRepo) RecordDownload(ctx context.Context, userID, resumeID, format string) error {
+	if m.RecordDownloadFn == nil {
+		return nil
+	}
+	return m.RecordDownloadFn(ctx, userID, resumeID, format)
 }
 
 func (m *FileRepo) CountExportsByUser(ctx context.Context, userID string) (int, error) {
