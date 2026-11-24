@@ -17,6 +17,7 @@ type look struct {
 	upper                          bool
 	dateBelow, center              bool
 	photoRight                     bool
+	headerLayout                   string
 	sep                            string
 	showPhoto                      bool
 	listChar                       string
@@ -124,6 +125,7 @@ func newLook(layout string, s *api.CVStyle) look {
 	}
 	l.dateBelow = s.DatePosition == "below"
 	l.photoRight = s.PhotoPos == "right"
+	l.headerLayout = s.HeaderLayout
 	l.listChar, l.indent = "•", 4
 	if s.ListStyle == "hyphen" {
 		l.listChar = "-"
@@ -138,8 +140,11 @@ func newLook(layout string, s *api.CVStyle) look {
 	case "center":
 		l.center = true
 	}
-	if s.Separator == "bar" {
-		l.sep = "bar"
+	switch {
+	case s.Separator == "bar" || s.Separator == "icon":
+		l.sep = s.Separator
+	case s.Separator == "" && layout == "classic":
+		l.sep = "icon"
 	}
 	l.accent = hexRGB(s.Accent)
 	if s.ColorMode == "multi" {
@@ -184,6 +189,9 @@ func (l look) separator() string {
 	if l.sep == "bar" {
 		return " | "
 	}
+	if l.sep == "icon" {
+		return "     "
+	}
 	return " · "
 }
 
@@ -194,4 +202,9 @@ func extraAt(c api.ResumeContent, key string) (api.ExtraSection, bool) {
 		return api.ExtraSection{}, false
 	}
 	return c.Extra[n], true
+}
+
+// inlineHeader puts the professional title on the name's line; it is the default of the classic header and ignored when the header is centred.
+func (l look) inlineHeader() bool {
+	return l.headerLayout != "stacked" && !l.center
 }

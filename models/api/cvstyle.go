@@ -24,13 +24,14 @@ type CVStyle struct {
 	DatePosition string   `json:"date_position,omitempty" binding:"omitempty,oneof=right below"`
 	LocationPos   string `json:"location_position,omitempty" binding:"omitempty,oneof=line date"`
 	MetaOrder     string `json:"meta_order,omitempty" binding:"omitempty,oneof=date_first location_first"`
+	HeaderLayout  string `json:"header_layout,omitempty" binding:"omitempty,oneof=stacked inline"`
 	PhotoPos      string `json:"photo_position,omitempty" binding:"omitempty,oneof=left right"`
 	ListStyle     string `json:"list_style,omitempty" binding:"omitempty,oneof=bullet hyphen"`
 	IndentBody    *bool  `json:"indent_body,omitempty"`
 	SubtitleStyle string `json:"subtitle_style,omitempty" binding:"omitempty,oneof=normal bold italic"`
 	DateStyle     string `json:"date_style,omitempty" binding:"omitempty,oneof=normal bold italic"`
 	Align        string   `json:"align,omitempty" binding:"omitempty,oneof=left center"`        // header text alignment
-	Separator    string   `json:"separator,omitempty" binding:"omitempty,oneof=bullet bar"`     // between contact details
+	Separator    string   `json:"separator,omitempty" binding:"omitempty,oneof=bullet bar icon"`     // between contact details
 	ColorMode    string   `json:"color_mode,omitempty" binding:"omitempty,oneof=single multi"`  // single: accent on black text, white page
 	Accent       string   `json:"accent,omitempty" binding:"omitempty,max=7"`
 	Text         string   `json:"text,omitempty" binding:"omitempty,max=7"`

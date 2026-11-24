@@ -455,10 +455,24 @@ func (d *cv) classic(opts RenderOptions) {
 	}
 	pdf.SetXY(textX, top)
 	d.font(d.nameFamily(), "B", lk.name, lk.col("name", lk.ink(rgb{17, 17, 17})))
-	pdf.MultiCell(tw, lk.name*ptToMM*1.15, cleanText(d.c.Contact.Name), "", align, false)
+	inline := lk.inlineHeader() && d.c.Contact.Headline != ""
+	if inline {
+		// name and professional title share the first line, as in the preview
+		left, tp, right, _ := pdf.GetMargins()
+		pdf.SetMargins(textX, tp, 210-textX-tw)
+		pdf.SetX(textX)
+		pdf.Write(lk.name*ptToMM*1.15, cleanText(d.c.Contact.Name)+"  ")
+		d.font(sans, "", lk.title, lk.col("title", cvBlue))
+		pdf.Write(lk.name*ptToMM*1.15, cleanText(d.c.Contact.Headline))
+		pdf.Ln(lk.name * ptToMM * 1.15)
+		pdf.SetMargins(left, tp, right)
+	} else {
+		pdf.MultiCell(tw, lk.name*ptToMM*1.15, cleanText(d.c.Contact.Name), "", align, false)
+	}
 	pdf.Ln(0.8)
 	pdf.SetX(textX)
-	if lk.center {
+	if inline {
+	} else if lk.center {
 		d.font(sans, "", lk.title, lk.col("title", cvBlue))
 		pdf.MultiCell(tw, d.lh(lk.title), cleanText(d.c.Contact.Headline), "", "C", false)
 	} else {
