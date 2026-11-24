@@ -206,7 +206,7 @@ func TestDownloadQuotaAndBranding(t *testing.T) {
 	assert.Equal(t, "ines_ben_mansour.pdf", res.Filename, "rule 22: prenom_nom.pdf")
 	text, err := core.ExtractText("pdf", *data)
 	require.NoError(t, err)
-	assert.Contains(t, text, "9itchi-pfe.com", "the free download carries the mark")
+	assert.NotContains(t, text, "9itchi-pfe.com", "no brand footer on any download")
 
 	f, _ = setup(free, 0)
 	_, apiErr = f.svc.ExportResume(context.Background(), uid, rid, api.ExportResumeRequest{Format: "docx"})

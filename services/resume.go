@@ -441,7 +441,7 @@ func (s *resumeService) ExportResume(ctx context.Context, userID string, id stri
 	if res.Language != nil && *res.Language == "en" {
 		lang = "en"
 	}
-	opts := core.RenderOptions{Language: lang, Branded: branded}
+	opts := core.RenderOptions{Language: lang}
 	if layout != "compact" {
 		if p, err := s.files.LatestPhoto(ctx, res.ID); err == nil {
 			opts.Photo, opts.PhotoFormat = p.Data, p.Format

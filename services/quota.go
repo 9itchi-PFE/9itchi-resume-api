@@ -1,6 +1,7 @@
 package services
 
 import (
+	"os"
 	"context"
 	"net/http"
 	"strings"
@@ -60,6 +61,9 @@ func (s *resumeService) checkResumeQuota(ctx context.Context, userID string) (*c
 // checkDownloadQuota enforces the plan's "cv_downloads" limit (402 beyond it) and says whether the
 // export carries the 9itchi mark (free plan).
 func (s *resumeService) checkDownloadQuota(ctx context.Context, userID string) (branded bool, apiErr *models.ApiError) {
+	if os.Getenv("UNLIMITED_DOWNLOADS") == "true" { // test environments: no plan limit on exports
+		return false, nil
+	}
 	q, apiErr := s.plan(ctx, userID)
 	if apiErr != nil || q == nil {
 		return false, apiErr
