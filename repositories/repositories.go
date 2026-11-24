@@ -12,6 +12,7 @@ type Repositories struct {
 	Resume   ResumeRepository
 	Template TemplateRepository
 	File     FileRepository
+	Tip      TipRepository
 }
 
 // InitRepositories connects to PostgreSQL, applies migrations and builds the repositories.
@@ -28,6 +29,7 @@ func InitRepositories(ctx context.Context, config utils.AppConfig) (*Repositorie
 		Resume:   NewResumeRepository(store),
 		Template: NewTemplateRepository(store),
 		File:     NewFileRepository(store),
+		Tip:      NewTipRepository(store),
 	}, nil
 }
 

@@ -4,6 +4,7 @@ package mocks
 
 import (
 	"context"
+	"time"
 
 	"9itchi-resume-api/models/db"
 	"9itchi-resume-api/repositories"
@@ -256,4 +257,23 @@ func (m *FileRepo) LatestExport(ctx context.Context, resumeID, format string) (*
 		return nil, repositories.ErrNotFound
 	}
 	return m.LatestExportFn(ctx, resumeID, format)
+}
+
+// TipRepo is a mock of repositories.TipRepository. It records who was released.
+type TipRepo struct {
+	ClaimFn    func(ctx context.Context, idleBefore, tippedBefore time.Time, limit int) ([]db.TipClaim, error)
+	ReleaseErr error
+	Released   []string
+}
+
+func (m *TipRepo) Claim(ctx context.Context, idleBefore, tippedBefore time.Time, limit int) ([]db.TipClaim, error) {
+	if m.ClaimFn == nil {
+		return nil, nil
+	}
+	return m.ClaimFn(ctx, idleBefore, tippedBefore, limit)
+}
+
+func (m *TipRepo) Release(_ context.Context, userID string) error {
+	m.Released = append(m.Released, userID)
+	return m.ReleaseErr
 }

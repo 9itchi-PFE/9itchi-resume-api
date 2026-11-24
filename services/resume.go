@@ -467,10 +467,17 @@ func (s *resumeService) ATSCheck(ctx context.Context, userID string, id string, 
 	if err != nil {
 		return nil, repoError(err, "resume not found")
 	}
+	out := checkResume(ctx, s.templates, res, req.TargetLanguage)
+	return &out, nil
+}
+
+// checkResume runs the 24 rules on a CV as it is now, rendered with its template. targetLanguage is the language
+// of the company the student applies to, "" when not said.
+func checkResume(ctx context.Context, templates repositories.TemplateRepository, res *db.Resume, targetLanguage string) api.ATSCheckResponse {
 	content := mapping.ParseContent(res.Content)
 	layout := ""
 	if res.TemplateID != nil {
-		if t, err := s.templates.Get(ctx, *res.TemplateID); err == nil {
+		if t, err := templates.Get(ctx, *res.TemplateID); err == nil {
 			layout = t.Layout
 		}
 	}
@@ -486,14 +493,13 @@ func (s *resumeService) ATSCheck(ctx context.Context, userID string, id string, 
 	if name := exportFilename(content.Contact.Name, ""); name != "" {
 		filename = name + ".pdf"
 	}
-	out := core.CheckATS(core.ATSInput{
+	return core.CheckATS(core.ATSInput{
 		Content:        content,
 		Language:       lang,
-		TargetLanguage: req.TargetLanguage,
+		TargetLanguage: targetLanguage,
 		ExportFilename: filename,
 		Rendered:       core.RenderForCheck(ctx, content, layout, headings),
 	})
-	return &out, nil
 }
 
 // render draws the resume as it is now (template, language, photo) with the given exporter. branded adds the
