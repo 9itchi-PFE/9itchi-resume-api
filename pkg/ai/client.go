@@ -4,6 +4,7 @@ package ai
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -31,9 +32,18 @@ func New(baseURL, apiKey string) *Client {
 
 var _ core.ResumeParser = (*Client)(nil)
 
-// Parse calls POST /ai/resume/parse. The CV text is never logged.
+// Parse calls POST /ai/resume/parse with the CV text. The CV text is never logged.
 func (c *Client) Parse(ctx context.Context, text string) (*core.ParsedResume, error) {
-	body, err := json.Marshal(map[string]string{"text": text})
+	return c.parse(ctx, map[string]any{"text": text})
+}
+
+// ParseImage calls POST /ai/resume/parse with a photo of the CV (base64 in the JSON body).
+func (c *Client) ParseImage(ctx context.Context, mediaType string, data []byte) (*core.ParsedResume, error) {
+	return c.parse(ctx, map[string]any{"image": map[string]string{"media_type": mediaType, "data": base64.StdEncoding.EncodeToString(data)}})
+}
+
+func (c *Client) parse(ctx context.Context, payload map[string]any) (*core.ParsedResume, error) {
+	body, err := json.Marshal(payload)
 	if err != nil {
 		return nil, err
 	}

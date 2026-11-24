@@ -20,6 +20,8 @@ type ParsedResume struct {
 // ResumeParser turns CV text into structured content (ai-api). Implementations never log the text.
 type ResumeParser interface {
 	Parse(ctx context.Context, text string) (*ParsedResume, error)
+	// ParseImage reads a photo or scan of a CV (mediaType image/jpeg or image/png).
+	ParseImage(ctx context.Context, mediaType string, data []byte) (*ParsedResume, error)
 }
 
 // Quotas are the limits of the user's current plan (payments-api). A key that is absent means no limit.

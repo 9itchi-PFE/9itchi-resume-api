@@ -18,9 +18,16 @@ import (
 )
 
 type fakeParser struct {
-	out  *core.ParsedResume
-	err  error
-	text string
+	out       *core.ParsedResume
+	err       error
+	text      string
+	mediaType string
+	image     []byte
+}
+
+func (p *fakeParser) ParseImage(_ context.Context, mediaType string, data []byte) (*core.ParsedResume, error) {
+	p.mediaType, p.image = mediaType, data
+	return p.out, p.err
 }
 
 func (p *fakeParser) Parse(_ context.Context, text string) (*core.ParsedResume, error) {
@@ -83,6 +90,36 @@ func TestUploadIsReadByAI(t *testing.T) {
 	assert.Contains(t, string(applied), `"certifications":[]`)
 	assert.Equal(t, "fr", lang)
 	assert.JSONEq(t, `{"pages":0,"seconds":0,"rewritten":3,"removed":["age","full_address"]}`, string(report))
+}
+
+func TestUploadPhotoOfCVIsReadAsImage(t *testing.T) {
+	parser := &fakeParser{out: &core.ParsedResume{Language: "fr", Content: api.ResumeContent{Contact: api.Contact{Name: "Ines"}}}}
+	f, _ := newSprint2Fixture(WithParser(parser))
+	var stored *db.ResumeFile
+	f.files.CreateFn = func(_ context.Context, fl *db.ResumeFile) (*db.ResumeFileMeta, error) {
+		stored = fl
+		return &db.ResumeFileMeta{ID: "f", Format: fl.Format}, nil
+	}
+	f.resumes.ApplyParsedFn = func(context.Context, string, []byte, string, []byte) (bool, error) { return true, nil }
+	jpg := append([]byte{0xFF, 0xD8, 0xFF, 0xE0}, bytes.Repeat([]byte("x"), 50)...)
+	_, apiErr := f.svc.UploadResume(context.Background(), uid, "Scan_CV.JPG", int64(len(jpg)), bytes.NewReader(jpg))
+	require.Nil(t, apiErr)
+	assert.Equal(t, "jpeg", stored.Format)
+	assert.Equal(t, "image/jpeg", stored.ContentType)
+	assert.Equal(t, "image/jpeg", parser.mediaType)
+	assert.Equal(t, jpg, parser.image)
+	assert.Empty(t, parser.text, "no text extraction for a photo")
+
+	png := []byte("\x89PNG\r\n\x1a\nrest")
+	_, apiErr = f.svc.UploadResume(context.Background(), uid, "cv.png", int64(len(png)), bytes.NewReader(png))
+	require.Nil(t, apiErr)
+	assert.Equal(t, "image/png", parser.mediaType)
+
+	_, apiErr = f.svc.UploadResume(context.Background(), uid, "cv.png", int64(len(jpg)), bytes.NewReader(jpg))
+	require.NotNil(t, apiErr, "a JPEG named .png is refused")
+	assert.Equal(t, http.StatusBadRequest, apiErr.Code)
+	_, apiErr = f.svc.UploadResume(context.Background(), uid, "cv.gif", 6, bytes.NewReader([]byte("GIF89a")))
+	require.NotNil(t, apiErr)
 }
 
 func TestUploadReadingFailures(t *testing.T) {

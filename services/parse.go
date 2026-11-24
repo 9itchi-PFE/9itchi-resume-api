@@ -29,12 +29,19 @@ func (s *resumeService) readUpload(resumeID, format string, data []byte) {
 			utils.Logger.Error("cv reading: mark failed", zap.Error(err))
 		}
 	}
-	text, err := core.ExtractText(format, data)
-	if err != nil {
-		fail("extract", err)
-		return
+	var parsed *core.ParsedResume
+	var err error
+	if format == "jpeg" || format == "png" {
+		// A photo of a CV has no text layer: ai-api reads the picture itself.
+		parsed, err = s.parser.ParseImage(ctx, "image/"+format, data)
+	} else {
+		var text string
+		if text, err = core.ExtractText(format, data); err != nil {
+			fail("extract", err)
+			return
+		}
+		parsed, err = s.parser.Parse(ctx, text)
 	}
-	parsed, err := s.parser.Parse(ctx, text)
 	if err != nil {
 		fail("parse", err)
 		return

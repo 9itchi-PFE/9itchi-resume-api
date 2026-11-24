@@ -248,17 +248,25 @@ func detectUpload(name string) (format, contentType string, apiErr *models.ApiEr
 		return "pdf", contentTypePDF, nil
 	case ".docx":
 		return "docx", contentTypeDOCX, nil
+	case ".jpg", ".jpeg":
+		return "jpeg", "image/jpeg", nil
+	case ".png":
+		return "png", "image/png", nil
 	}
-	return "", "", newError(http.StatusBadRequest, "only PDF or DOCX files are accepted")
+	return "", "", newError(http.StatusBadRequest, "only PDF, DOCX, JPG or PNG files are accepted")
 }
 
-// hasMagic checks the leading bytes: "%PDF-" for pdf, a zip header ("PK") for docx.
+// hasMagic checks the leading bytes: "%PDF-" for pdf, a zip header ("PK") for docx, the JPEG and PNG signatures.
 func hasMagic(format string, data []byte) bool {
 	switch format {
 	case "pdf":
 		return bytes.HasPrefix(data, []byte("%PDF-"))
 	case "docx":
 		return bytes.HasPrefix(data, []byte("PK\x03\x04"))
+	case "jpeg":
+		return bytes.HasPrefix(data, []byte{0xFF, 0xD8, 0xFF})
+	case "png":
+		return bytes.HasPrefix(data, []byte("\x89PNG\r\n\x1a\n"))
 	}
 	return false
 }
