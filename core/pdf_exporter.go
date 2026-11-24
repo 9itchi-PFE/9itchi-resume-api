@@ -18,7 +18,7 @@ import (
 //   - classic: Source Sans 3, optional round photo, name and headline in blue small caps (#2F5597),
 //     blue uppercase section titles over a blue rule, dates on the right.
 //   - modern: a dark side column (#1F2A44) with photo, contact, skills and languages; Source Serif 4 titles.
-//   - compact: black and white, no photo, centred name, bold uppercase titles over a black rule.
+//   - compact: black and white, optional round photo above the name, centred name, bold uppercase titles over a black rule.
 //
 // All stay text based (no text in images) so applicant tracking systems can read them.
 
@@ -420,7 +420,7 @@ func (pdfExporter) Render(ctx context.Context, c api.ResumeContent, layout strin
 	case "modern":
 		d.modern(opts)
 	case "compact":
-		d.compact()
+		d.compact(opts)
 	default:
 		d.classic(opts)
 	}
@@ -494,8 +494,7 @@ func (d *cv) classic(opts RenderOptions) {
 	sections := map[string]func(){
 		"summary": func() {
 			if s := strings.TrimSpace(d.c.Summary); s != "" {
-				d.rule(blue, 0.35)
-				pdf.Ln(1.6)
+				head(d.titles["summary"])
 				d.font(sans, "", b, ink)
 				d.para(s, b)
 			}
@@ -804,7 +803,7 @@ func (d *cv) modern(opts RenderOptions) {
 	mainSections := map[string]func(){
 		"summary": func() {
 			if s := strings.TrimSpace(d.c.Summary); s != "" {
-				pdf.Ln(2)
+				head(d.titles["summary"])
 				d.font(sans, "", b, ink)
 				d.para(s, b)
 			}
@@ -882,7 +881,7 @@ func spaced(s string) string {
 
 // ---- Compact ----
 
-func (d *cv) compact() {
+func (d *cv) compact(opts RenderOptions) {
 	pdf := d.pdf
 	lk := d.lk
 	d.body = lk.base
@@ -904,6 +903,16 @@ func (d *cv) compact() {
 	}
 	textX, tw := d.x, d.w
 	top := pdf.GetY()
+	if len(opts.Photo) > 0 {
+		const r = 11.0
+		cx := d.x + r
+		if lk.center {
+			cx = 105
+		}
+		if d.photo(opts, cx, top+r, r, nil) {
+			top += 2*r + 2
+		}
+	}
 	pdf.SetXY(textX, top)
 	d.font(d.nameFamily(), "B", lk.name, lk.col("name", ink))
 	pdf.MultiCell(tw, d.lh(lk.name), nameText, "", align, false)
@@ -939,7 +948,7 @@ func (d *cv) compact() {
 	sections := map[string]func(){
 		"summary": func() {
 			if s := strings.TrimSpace(d.c.Summary); s != "" {
-				pdf.Ln(2)
+				head(d.titles["summary"])
 				d.font(sans, "", b, ink)
 				d.para(s, b)
 			}

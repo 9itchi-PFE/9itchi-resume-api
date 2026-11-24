@@ -115,7 +115,7 @@ func TestPDFPhotoAndNewSections(t *testing.T) {
 		for _, want := range []string{"Lecteur NFC", "Langages", "IEEE ENIS"} {
 			assert.Contains(t, text, want, layout)
 		}
-		assert.Equal(t, layout != "compact", bytes.Contains(out, []byte("/Subtype /Image")), layout)
+		assert.True(t, bytes.Contains(out, []byte("/Subtype /Image")), layout)
 	}
 	out, err := NewPDFExporter().Render(context.Background(), richContent(), "classic", RenderOptions{Photo: []byte("garbage"), PhotoFormat: "jpeg"})
 	require.NoError(t, err, "an unreadable photo is skipped")

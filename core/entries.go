@@ -1,6 +1,7 @@
 package core
 
 import (
+	"regexp"
 	"strings"
 
 	"9itchi-resume-api/models/api"
@@ -12,7 +13,37 @@ func visibleEntries(c api.ResumeContent) api.ResumeContent {
 	c.Education = keep(c.Education, func(e api.Education) bool { return !e.Hidden })
 	c.Projects = keep(c.Projects, func(p api.Project) bool { return !p.Hidden })
 	c.Certifications = keep(c.Certifications, func(x api.Certification) bool { return !x.Hidden })
+	c.Summary = plain(c.Summary)
+	for i := range c.Experience {
+		c.Experience[i].Description = plainAll(c.Experience[i].Description)
+	}
+	for i := range c.Projects {
+		c.Projects[i].Description = plainAll(c.Projects[i].Description)
+	}
 	return c
+}
+
+var (
+	linkMark = regexp.MustCompile(`\[([^\]]+)\]\(https?://[^\s)]+\)`)
+	boldMark = regexp.MustCompile(`\*\*([^*]+)\*\*`)
+	ulMark   = regexp.MustCompile(`__([^_]+)__`)
+	itMark   = regexp.MustCompile(`\*([^*]+)\*`)
+)
+
+// plain removes the inline marks of the editor (bold, italic, underline, links) so they never print as symbols.
+func plain(s string) string {
+	s = linkMark.ReplaceAllString(s, "$1")
+	s = boldMark.ReplaceAllString(s, "$1")
+	s = ulMark.ReplaceAllString(s, "$1")
+	return itMark.ReplaceAllString(s, "$1")
+}
+
+func plainAll(xs []string) []string {
+	out := make([]string, len(xs))
+	for i, x := range xs {
+		out[i] = plain(x)
+	}
+	return out
 }
 
 func keep[T any](xs []T, ok func(T) bool) []T {

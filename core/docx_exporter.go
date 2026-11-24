@@ -323,13 +323,14 @@ func (d *docx) classic() string {
 	}
 	o := newOrdered(&d.body)
 	o.begin()
-	if s := strings.TrimSpace(d.c.Summary); s != "" {
-		d.add(para(pp{before: 120, borderTop: hexBlue}, run(s, ink)))
-	}
-	o.cut("summary")
 	heading := func(t string) {
 		d.add(para(pp{before: 160, after: 60, borderBottom: hexBlue, keepNext: true}, run(t, rp{size: 13, color: hexBlue, caps: true})))
 	}
+	if s := strings.TrimSpace(d.c.Summary); s != "" {
+		heading(d.titles["summary"])
+		d.add(para(pp{before: 60}, run(s, ink)))
+	}
+	o.cut("summary")
 	if len(d.c.Education) > 0 {
 		heading(d.titles["education"])
 		for i, e := range d.c.Education {
@@ -528,13 +529,14 @@ func (d *docx) modern(branded bool) string {
 	}
 	om := newOrdered(&m)
 	om.begin()
-	if sum := strings.TrimSpace(d.c.Summary); sum != "" {
-		m.WriteString(para(pp{before: 100}, run(sum, ink)))
-	}
-	om.cut("summary")
 	heading := func(t string) {
 		m.WriteString(para(pp{before: 180, after: 40, keepNext: true}, run(t, rp{size: 13, bold: true, color: hexNavy, font: "Cambria"})))
 	}
+	if sum := strings.TrimSpace(d.c.Summary); sum != "" {
+		heading(d.titles["summary"])
+		m.WriteString(para(pp{before: 60}, run(sum, ink)))
+	}
+	om.cut("summary")
 	row := func(left []string, right string, p pp) { m.WriteString(rowP(textW, left, right, muted, p)) }
 	bullets := func(lines []string) {
 		for _, l := range nonEmpty(lines...) {
