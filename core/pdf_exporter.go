@@ -130,6 +130,18 @@ type cv struct {
 	body    float64 // pt
 	x, w    float64 // column, mm
 	pending []seg   // left side of the next row, set by the row's left callback
+	lang    string
+}
+
+// tech writes the project's technologies under its description.
+func (d *cv) tech(p api.Project, size float64, col rgb) {
+	t := techText(p, d.lang)
+	if t == "" {
+		return
+	}
+	d.font(sans, "I", size, col)
+	d.pdf.SetX(d.x + d.lk.indent)
+	d.pdf.MultiCell(d.w-d.lk.indent, d.lh(size), cleanText(t), "", "L", false)
 }
 
 func (d *cv) lh(size float64) float64 { return size * ptToMM * d.lk.lineH }
@@ -185,6 +197,18 @@ func (d *cv) leftText(w, size float64) {
 	}
 	segs := d.pending
 	d.pending = nil
+	y0 := d.pdf.GetY()
+	defer func() {
+		x := d.x
+		for _, s := range segs {
+			d.font(s.family, s.style, size, s.col)
+			sw := d.pdf.GetStringWidth(cleanText(s.text))
+			if s.link != "" {
+				d.pdf.LinkString(x, y0, minf(sw, w), d.lh(size), s.link)
+			}
+			x += sw
+		}
+	}()
 	total := 0.0
 	for _, s := range segs {
 		d.font(s.family, s.style, size, s.col)
@@ -219,12 +243,19 @@ func (d *cv) leftText(w, size float64) {
 type seg struct {
 	text, family, style string
 	col                 rgb
+	link                string
+}
+
+// linked makes a segment clickable when the entry has a web link.
+func linked(s seg, url string) seg {
+	s.link = safeURL(url)
+	return s
 }
 
 func (d *cv) segs(s ...seg) func() { return func() { d.pending = s } }
 
 func (d *cv) bullets(lines []string, size float64, col rgb) {
-	indent := 4.0
+	indent := d.lk.indent
 	for _, l := range lines {
 		if strings.TrimSpace(l) == "" {
 			continue
@@ -232,7 +263,7 @@ func (d *cv) bullets(lines []string, size float64, col rgb) {
 		d.font(sans, "", size, col)
 		y := d.pdf.GetY()
 		d.pdf.SetXY(d.x+1, y)
-		d.pdf.CellFormat(indent-1, d.lh(size), "•", "", 0, "L", false, 0, "")
+		d.pdf.CellFormat(indent-1, d.lh(size), d.lk.listChar, "", 0, "L", false, 0, "")
 		d.pdf.SetXY(d.x+indent, y)
 		d.pdf.MultiCell(d.w-indent, d.lh(size), cleanText(l), "", "L", false)
 	}
@@ -367,7 +398,7 @@ func (pdfExporter) Render(ctx context.Context, c api.ResumeContent, layout strin
 	if !ok {
 		titles = headings["fr"]
 	}
-	d := &cv{pdf: pdf, c: c, titles: titles, lk: newLook(layout, c.Style)}
+	d := &cv{pdf: pdf, c: visibleEntries(c), titles: titles, lk: newLook(layout, c.Style), lang: opts.Language}
 	if !d.lk.showPhoto {
 		opts.Photo = nil
 	}
@@ -452,12 +483,12 @@ func (d *cv) classic(opts RenderOptions) {
 	b, eb := d.body, lk.entry
 	ink := lk.ink(cvInk)
 	entry := lk.col("entry_title", cvBlue)
-	bold := func(t string) seg { return seg{t, sans, "B", ink} }
-	plain := func(t string) seg { return seg{t, sans, "", ink} }
-	accented := func(t string) seg { return seg{t, sans, "", entry} }
+	bold := func(t string) seg { return seg{text: t, family: sans, style: "B", col: ink} }
+	plain := func(t string) seg { return seg{text: t, family: sans, style: pick(lk.subStyle, ""), col: ink} }
+	accented := func(t string) seg { return seg{text: t, family: sans, style: pick(lk.subStyle, ""), col: entry} }
 	dateCol := lk.col("dates", ink)
-	rightPlain := func() { d.font(sans, "", eb, dateCol) }
-	rightBold := func() { d.font(sans, "B", eb, dateCol) }
+	rightPlain := func() { d.font(sans, pick(lk.dateStyle, ""), eb, dateCol) }
+	rightBold := func() { d.font(sans, pick(lk.dateStyle, "B"), eb, dateCol) }
 	between := func() { pdf.Ln(lk.gapOr(1)) }
 
 	sections := map[string]func(){
@@ -478,7 +509,7 @@ func (d *cv) classic(opts RenderOptions) {
 				if i > 0 {
 					between()
 				}
-				d.row(d.segs(bold(e.Degree)), rightPlain, dates(e.Start, e.End), eb)
+				d.row(d.segs(linked(bold(e.Degree), e.URL)), rightPlain, dates(e.Start, e.End), eb)
 				if e.School != "" || e.Location != "" {
 					d.row(d.segs(plain(e.School)), rightPlain, e.Location, eb)
 				}
@@ -495,7 +526,7 @@ func (d *cv) classic(opts RenderOptions) {
 				}
 				d.row(d.segs(bold(e.Title)), rightBold, dates(e.Start, e.End), eb)
 				if e.Company != "" || e.Kind != "" || e.Location != "" {
-					parts := []seg{accented(e.Company)}
+					parts := []seg{linked(accented(e.Company), e.URL)}
 					if e.Kind != "" {
 						parts = append(parts, plain(" ("+e.Kind+")"))
 					}
@@ -510,8 +541,9 @@ func (d *cv) classic(opts RenderOptions) {
 			}
 			head(d.titles["projects"])
 			for _, p := range d.c.Projects {
-				d.row(d.segs(bold(p.Name)), rightPlain, join(" · ", p.Tech, p.Year), eb)
+				d.row(d.segs(linked(bold(p.Name), p.URL)), rightPlain, p.Year, eb)
 				d.bullets(p.Description, b, ink)
+				d.tech(p, b, ink)
 			}
 		},
 		"skills": func() { d.skillsGrid(head, b, ink) },
@@ -521,7 +553,7 @@ func (d *cv) classic(opts RenderOptions) {
 			}
 			head(d.titles["certifications"])
 			for _, ce := range d.c.Certifications {
-				d.row(d.segs(bold(ce.Name), plain(prefix(", ", ce.Issuer))), rightPlain, ce.Year, eb)
+				d.row(d.segs(linked(bold(ce.Name), ce.URL), plain(prefix(", ", ce.Issuer))), rightPlain, ce.Year, eb)
 			}
 		},
 		"languages": func() {
@@ -765,9 +797,9 @@ func (d *cv) modern(opts RenderOptions) {
 		pdf.CellFormat(d.w, d.lh(lk.head), cleanText(lk.heading(t)), "", 1, "L", false, 0, "")
 		pdf.Ln(0.4)
 	}
-	bold := func(t string) seg { return seg{t, sans, "B", lk.col("entry_title", ink)} }
-	muted := func(t string) seg { return seg{t, sans, "", cvMuted} }
-	right := func() { d.font(sans, "", eb, lk.col("dates", cvMuted)) }
+	bold := func(t string) seg { return seg{text: t, family: sans, style: "B", col: lk.col("entry_title", ink)} }
+	muted := func(t string) seg { return seg{text: t, family: sans, style: pick(lk.subStyle, ""), col: cvMuted} }
+	right := func() { d.font(sans, pick(lk.dateStyle, ""), eb, lk.col("dates", cvMuted)) }
 	between := func() { pdf.Ln(lk.gapOr(0.8)) }
 	mainSections := map[string]func(){
 		"summary": func() {
@@ -783,7 +815,7 @@ func (d *cv) modern(opts RenderOptions) {
 			}
 			head(d.titles["education"])
 			for _, e := range d.c.Education {
-				d.row(d.segs(bold(join(" — ", e.School, e.Degree))), right, dates(e.Start, e.End), eb)
+				d.row(d.segs(linked(bold(join(" — ", e.School, e.Degree)), e.URL)), right, dates(e.Start, e.End), eb)
 				if e.Location != "" {
 					d.row(d.segs(muted(e.Location)), right, "", eb)
 				}
@@ -796,7 +828,7 @@ func (d *cv) modern(opts RenderOptions) {
 			}
 			head(d.titles["experience"])
 			for _, e := range d.c.Experience {
-				d.row(d.segs(bold(join(" — ", e.Title, e.Company))), right, dates(e.Start, e.End), eb)
+				d.row(d.segs(linked(bold(join(" — ", e.Title, e.Company)), e.URL)), right, dates(e.Start, e.End), eb)
 				if l := join(" · ", e.Kind, e.Location); l != "" {
 					d.row(d.segs(muted(l)), right, "", eb)
 				}
@@ -810,8 +842,9 @@ func (d *cv) modern(opts RenderOptions) {
 			}
 			head(d.titles["projects"])
 			for _, p := range d.c.Projects {
-				d.row(d.segs(bold(p.Name)), right, join(" · ", p.Tech, p.Year), eb)
+				d.row(d.segs(linked(bold(p.Name), p.URL)), right, p.Year, eb)
 				d.bullets(p.Description, b, ink)
+				d.tech(p, b, ink)
 				between()
 			}
 		},
@@ -821,7 +854,7 @@ func (d *cv) modern(opts RenderOptions) {
 			}
 			head(d.titles["certifications"])
 			for _, ce := range d.c.Certifications {
-				d.row(d.segs(bold(ce.Name), muted(prefix(", ", ce.Issuer))), right, ce.Year, eb)
+				d.row(d.segs(linked(bold(ce.Name), ce.URL), muted(prefix(", ", ce.Issuer))), right, ce.Year, eb)
 			}
 		},
 	}
@@ -900,9 +933,9 @@ func (d *cv) compact() {
 		d.rule(rule, 0.3)
 		pdf.Ln(1)
 	}
-	bold := func(t string) seg { return seg{t, sans, "B", lk.col("entry_title", ink)} }
-	plain := func(t string) seg { return seg{t, sans, "", ink} }
-	right := func() { d.font(sans, "", eb, lk.col("dates", ink)) }
+	bold := func(t string) seg { return seg{text: t, family: sans, style: "B", col: lk.col("entry_title", ink)} }
+	plain := func(t string) seg { return seg{text: t, family: sans, style: pick(lk.subStyle, ""), col: ink} }
+	right := func() { d.font(sans, pick(lk.dateStyle, ""), eb, lk.col("dates", ink)) }
 	sections := map[string]func(){
 		"summary": func() {
 			if s := strings.TrimSpace(d.c.Summary); s != "" {
@@ -917,7 +950,7 @@ func (d *cv) compact() {
 			}
 			head(d.titles["education"])
 			for _, e := range d.c.Education {
-				d.row(d.segs(bold(join(" — ", e.School, e.Degree))), right, dates(e.Start, e.End), eb)
+				d.row(d.segs(linked(bold(join(" — ", e.School, e.Degree)), e.URL)), right, dates(e.Start, e.End), eb)
 			}
 		},
 		"experience": func() {
@@ -926,7 +959,7 @@ func (d *cv) compact() {
 			}
 			head(d.titles["experience"])
 			for _, e := range d.c.Experience {
-				d.row(d.segs(bold(join(" : ", e.Company, e.Title)), plain(prefix(", ", e.Location))), right, dates(e.Start, e.End), eb)
+				d.row(d.segs(linked(bold(join(" : ", e.Company, e.Title)), e.URL), plain(prefix(", ", e.Location))), right, dates(e.Start, e.End), eb)
 				d.bullets(e.Description, b, ink)
 				pdf.Ln(lk.gapOr(0))
 			}
@@ -937,8 +970,9 @@ func (d *cv) compact() {
 			}
 			head(d.titles["projects"])
 			for _, p := range d.c.Projects {
-				d.row(d.segs(bold(p.Name), plain(prefix(" · ", p.Tech))), right, p.Year, eb)
+				d.row(d.segs(linked(bold(p.Name), p.URL)), right, p.Year, eb)
 				d.bullets(p.Description, b, ink)
+				d.tech(p, b, ink)
 				pdf.Ln(lk.gapOr(0))
 			}
 		},

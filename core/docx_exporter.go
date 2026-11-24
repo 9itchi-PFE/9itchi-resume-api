@@ -179,6 +179,7 @@ func docBodyFont(s *api.CVStyle) string {
 type docx struct {
 	c      api.ResumeContent
 	titles map[string]string
+	lang   string
 	body   strings.Builder
 	photo  *docxPhoto
 }
@@ -248,7 +249,7 @@ func (docxExporter) Render(ctx context.Context, c api.ResumeContent, layout stri
 	if !ok {
 		titles = headings["fr"]
 	}
-	d := &docx{c: c, titles: titles}
+	d := &docx{c: visibleEntries(c), titles: titles, lang: opts.Language}
 	if layout != "compact" {
 		d.photo = newDocxPhoto(opts.Photo, opts.PhotoFormat)
 	}
@@ -365,8 +366,9 @@ func (d *docx) classic() string {
 	if len(d.c.Projects) > 0 {
 		heading(d.titles["projects"])
 		for _, p := range d.c.Projects {
-			d.add(rowP(width, []string{run(p.Name, bold)}, join(" · ", p.Tech, p.Year), ink, pp{keepNext: true}))
+			d.add(rowP(width, []string{run(p.Name, bold)}, p.Year, ink, pp{keepNext: true}))
 			d.bullets(p.Description, ink)
+			d.techLine(p, ink)
 		}
 	}
 	o.cut("projects")
@@ -422,6 +424,26 @@ func (d *docx) bullets(lines []string, p rp) {
 	for _, l := range nonEmpty(lines...) {
 		d.add(para(pp{bullet: true}, run(l, p)))
 	}
+}
+
+// techLine writes the project's technologies under its description, unless the user hid them.
+func (d *docx) techLine(p api.Project, rpr rp) {
+	if t := techText(p, d.lang); t != "" {
+		rpr.italic = true
+		d.add(para(pp{bullet: false}, run(t, rpr)))
+	}
+}
+
+// listXML gives the bullet glyph and indent the user chose.
+func listXML(s *api.CVStyle) (glyph string, left, hang int) {
+	glyph, left, hang = "•", 284, 227
+	if s != nil && s.ListStyle == "hyphen" {
+		glyph = "-"
+	}
+	if s != nil && s.IndentBody != nil && !*s.IndentBody {
+		left, hang = 170, 170
+	}
+	return
 }
 
 func (d *docx) extra(heading func(string), p rp, o *ordered) {
@@ -543,8 +565,9 @@ func (d *docx) modern(branded bool) string {
 	if len(d.c.Projects) > 0 {
 		heading(d.titles["projects"])
 		for _, p := range d.c.Projects {
-			row([]string{run(p.Name, bold)}, join(" · ", p.Tech, p.Year), pp{before: 40, keepNext: true})
+			row([]string{run(p.Name, bold)}, p.Year, pp{before: 40, keepNext: true})
 			bullets(p.Description)
+			d.techLine(p, ink)
 		}
 	}
 	om.cut("projects")
@@ -632,8 +655,9 @@ func (d *docx) compact() string {
 	if len(d.c.Projects) > 0 {
 		heading(d.titles["projects"])
 		for _, p := range d.c.Projects {
-			d.add(rowP(width, []string{run(p.Name, bold), run(prefix(" · ", p.Tech), ink)}, p.Year, ink, pp{keepNext: true}))
+			d.add(rowP(width, []string{run(p.Name, bold)}, p.Year, ink, pp{keepNext: true}))
 			d.bullets(p.Description, ink)
+			d.techLine(p, ink)
 		}
 	}
 	o.cut("projects")
@@ -721,9 +745,10 @@ func (d *docx) pack(sect string, branded bool) ([]byte, error) {
 		`<w:pPrDefault><w:pPr><w:spacing w:after="0" w:line="252" w:lineRule="auto"/></w:pPr></w:pPrDefault></w:docDefaults>`+
 		`<w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/><w:qFormat/></w:style>`+
 		`</w:styles>`)
+	glyph, nl, nh := listXML(d.c.Style)
 	add("word/numbering.xml", xmlHead+`<w:numbering xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">`+
-		`<w:abstractNum w:abstractNumId="0"><w:multiLevelType w:val="singleLevel"/><w:lvl w:ilvl="0"><w:start w:val="1"/><w:numFmt w:val="bullet"/><w:lvlText w:val="•"/><w:lvlJc w:val="left"/>`+
-		`<w:pPr><w:ind w:left="284" w:hanging="227"/></w:pPr></w:lvl></w:abstractNum><w:num w:numId="1"><w:abstractNumId w:val="0"/></w:num></w:numbering>`)
+		`<w:abstractNum w:abstractNumId="0"><w:multiLevelType w:val="singleLevel"/><w:lvl w:ilvl="0"><w:start w:val="1"/><w:numFmt w:val="bullet"/><w:lvlText w:val="`+glyph+`"/><w:lvlJc w:val="left"/>`+
+		`<w:pPr><w:ind w:left="`+strconv.Itoa(nl)+`" w:hanging="`+strconv.Itoa(nh)+`"/></w:pPr></w:lvl></w:abstractNum><w:num w:numId="1"><w:abstractNumId w:val="0"/></w:num></w:numbering>`)
 	add("word/document.xml", xmlHead+`<w:document `+docNS+`><w:body>`+d.body.String()+sect+`</w:body></w:document>`)
 
 	var buf bytes.Buffer

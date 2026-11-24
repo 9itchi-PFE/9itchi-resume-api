@@ -22,6 +22,10 @@ type CVStyle struct {
 	BodyFont     string   `json:"body_font,omitempty" binding:"omitempty,oneof=sourcesans lato carlito tinos"` // applies to all body text
 	HeadingCase  string   `json:"heading_case,omitempty" binding:"omitempty,oneof=capitalize uppercase"`
 	DatePosition string   `json:"date_position,omitempty" binding:"omitempty,oneof=right below"`
+	ListStyle     string `json:"list_style,omitempty" binding:"omitempty,oneof=bullet hyphen"`
+	IndentBody    *bool  `json:"indent_body,omitempty"`
+	SubtitleStyle string `json:"subtitle_style,omitempty" binding:"omitempty,oneof=normal bold italic"`
+	DateStyle     string `json:"date_style,omitempty" binding:"omitempty,oneof=normal bold italic"`
 	Align        string   `json:"align,omitempty" binding:"omitempty,oneof=left center"`        // header text alignment
 	Separator    string   `json:"separator,omitempty" binding:"omitempty,oneof=bullet bar"`     // between contact details
 	ColorMode    string   `json:"color_mode,omitempty" binding:"omitempty,oneof=single multi"`  // single: accent on black text, white page

@@ -63,6 +63,9 @@ func (c ResumeContent) AllSkills() []string {
 type Project struct {
 	Name        string   `json:"name" binding:"max=200"`
 	Tech        string   `json:"tech" binding:"max=200"`
+	HideTech    bool     `json:"hide_tech,omitempty"`
+	URL         string   `json:"url,omitempty" binding:"max=300"`
+	Hidden      bool     `json:"hidden,omitempty"`
 	Year        string   `json:"year" binding:"max=30"`
 	Description []string `json:"description" binding:"max=30,dive,max=1000"`
 }
@@ -81,6 +84,8 @@ type ExtraSection struct {
 type Certification struct {
 	Name   string `json:"name" binding:"max=200"`
 	Issuer string `json:"issuer" binding:"max=200"`
+	URL    string `json:"url,omitempty" binding:"max=300"`
+	Hidden bool   `json:"hidden,omitempty"`
 	Year   string `json:"year" binding:"max=30"`
 }
 
@@ -97,6 +102,8 @@ type Experience struct {
 	Company     string   `json:"company" binding:"max=200"`
 	Title       string   `json:"title" binding:"max=200"`
 	Kind        string   `json:"kind,omitempty" binding:"max=100"`
+	URL         string   `json:"url,omitempty" binding:"max=300"`
+	Hidden      bool     `json:"hidden,omitempty"`
 	Location    string   `json:"location,omitempty" binding:"max=200"`
 	Start       string   `json:"start" binding:"max=30"`
 	End         string   `json:"end" binding:"max=30"`
@@ -106,6 +113,8 @@ type Experience struct {
 type Education struct {
 	School   string `json:"school" binding:"max=200"`
 	Degree   string `json:"degree" binding:"max=200"`
+	URL      string `json:"url,omitempty" binding:"max=300"`
+	Hidden   bool   `json:"hidden,omitempty"`
 	Location string `json:"location,omitempty" binding:"max=200"`
 	Start    string `json:"start" binding:"max=30"`
 	End      string `json:"end" binding:"max=30"`

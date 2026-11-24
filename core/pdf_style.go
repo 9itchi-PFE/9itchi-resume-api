@@ -18,6 +18,9 @@ type look struct {
 	dateBelow, center              bool
 	sep                            string
 	showPhoto                      bool
+	listChar                       string
+	indent                         float64 // mm of the description text
+	subStyle, dateStyle            string  // "" keeps the template's own style, "N" is explicitly normal
 	style                          *api.CVStyle
 	accent, text, bg               *rgb
 }
@@ -49,6 +52,29 @@ func delta(p *float64, def float64) float64 {
 		return *p
 	}
 	return def
+}
+
+func fontStyleOf(s string) string {
+	switch s {
+	case "bold":
+		return "B"
+	case "italic":
+		return "I"
+	case "normal":
+		return "N"
+	}
+	return ""
+}
+
+// pick returns the user's choice for a text role, or def when the user kept the template's style.
+func pick(chosen, def string) string {
+	switch chosen {
+	case "":
+		return def
+	case "N":
+		return ""
+	}
+	return chosen
 }
 
 func newLook(layout string, s *api.CVStyle) look {
@@ -96,6 +122,14 @@ func newLook(layout string, s *api.CVStyle) look {
 		l.upper = false
 	}
 	l.dateBelow = s.DatePosition == "below"
+	l.listChar, l.indent = "•", 4
+	if s.ListStyle == "hyphen" {
+		l.listChar = "-"
+	}
+	if s.IndentBody != nil && !*s.IndentBody {
+		l.indent = 2.6
+	}
+	l.subStyle, l.dateStyle = fontStyleOf(s.SubtitleStyle), fontStyleOf(s.DateStyle)
 	switch s.Align {
 	case "left":
 		l.center = false
