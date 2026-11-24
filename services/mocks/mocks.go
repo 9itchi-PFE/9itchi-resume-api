@@ -27,7 +27,7 @@ type ResumeRepo struct {
 	UpdateFn         func(ctx context.Context, userID, id string, title, templateID *string, content []byte) (*db.Resume, error)
 	DeleteFn         func(ctx context.Context, userID, id string) error
 	BumpVersionFn    func(ctx context.Context, userID, id string) (int, []byte, error)
-	InsertVersionFn  func(ctx context.Context, resumeID string, versionNo int, content []byte) (*db.ResumeVersionMeta, error)
+	InsertVersionFn  func(ctx context.Context, resumeID string, versionNo int, label string, content []byte) (*db.ResumeVersionMeta, error)
 	ListVersionsFn   func(ctx context.Context, resumeID string) ([]db.ResumeVersionMeta, error)
 	CountByUserFn    func(ctx context.Context, userID string) (int, error)
 	SetParseStatusFn func(ctx context.Context, id, status string) error
@@ -114,11 +114,11 @@ func (m *ResumeRepo) BumpVersion(ctx context.Context, userID, id string) (int, [
 	return m.BumpVersionFn(ctx, userID, id)
 }
 
-func (m *ResumeRepo) InsertVersion(ctx context.Context, resumeID string, versionNo int, content []byte) (*db.ResumeVersionMeta, error) {
+func (m *ResumeRepo) InsertVersion(ctx context.Context, resumeID string, versionNo int, label string, content []byte) (*db.ResumeVersionMeta, error) {
 	if m.InsertVersionFn == nil {
 		return nil, nil
 	}
-	return m.InsertVersionFn(ctx, resumeID, versionNo, content)
+	return m.InsertVersionFn(ctx, resumeID, versionNo, label, content)
 }
 
 func (m *ResumeRepo) ListVersions(ctx context.Context, resumeID string) ([]db.ResumeVersionMeta, error) {

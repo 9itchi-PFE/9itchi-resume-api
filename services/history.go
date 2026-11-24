@@ -30,13 +30,16 @@ func (s *resumeService) GetVersion(ctx context.Context, userID, id, versionID st
 		return nil, repoError(err, "version not found")
 	}
 	return &api.VersionContentResponse{
-		VersionResponse: api.VersionResponse{ID: v.ID, VersionNo: v.VersionNo, CreatedAt: v.CreatedAt},
+		VersionResponse: api.VersionResponse{ID: v.ID, VersionNo: v.VersionNo, Label: v.Label, CreatedAt: v.CreatedAt},
 		Content:         mapping.ParseContent(v.Content),
 	}, nil
 }
 
 // RestoreVersion puts a saved version back as the current content. The content it replaces is saved first,
 // so a restore can always be undone from the history.
+// LabelBeforeRestore marks the version saved just before a restore, so the restore can be undone.
+const LabelBeforeRestore = "before_restore"
+
 func (s *resumeService) RestoreVersion(ctx context.Context, userID, id, versionID string) (*api.ResumeResponse, *models.ApiError) {
 	if !isUUID(id) || !isUUID(versionID) {
 		return nil, newError(http.StatusBadRequest, "invalid id")
@@ -51,7 +54,7 @@ func (s *resumeService) RestoreVersion(ctx context.Context, userID, id, versionI
 		if err != nil {
 			return err
 		}
-		if _, err := s.repo.InsertVersion(ctx, id, versionNo, current); err != nil {
+		if _, err := s.repo.InsertVersion(ctx, id, versionNo, LabelBeforeRestore, current); err != nil {
 			return err
 		}
 		res, err = s.repo.Update(ctx, userID, id, nil, nil, v.Content)

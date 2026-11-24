@@ -98,11 +98,12 @@ func TestVersionsAndPhotos(t *testing.T) {
 	require.NoError(t, err)
 	n, content, err := resumes.BumpVersion(ctx, u1, r.ID)
 	require.NoError(t, err)
-	meta, err := resumes.InsertVersion(ctx, r.ID, n, content)
+	meta, err := resumes.InsertVersion(ctx, r.ID, n, "manual", content)
 	require.NoError(t, err)
 	v, err := resumes.GetVersion(ctx, r.ID, meta.ID)
 	require.NoError(t, err)
 	assert.JSONEq(t, `{"summary":"v1"}`, string(v.Content))
+	assert.Equal(t, "manual", v.Label)
 	_, err = resumes.GetVersion(ctx, "00000000-0000-0000-0000-0000000000ff", meta.ID)
 	assert.ErrorIs(t, err, ErrNotFound, "a version is only found under its own resume")
 

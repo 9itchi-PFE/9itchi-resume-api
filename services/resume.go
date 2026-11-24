@@ -49,7 +49,7 @@ type ResumeService interface {
 	// GET /resumes/:id/versions: list saved versions (no content)
 	ListVersions(ctx context.Context, userID string, id string) (*api.ListVersionsResponse, *models.ApiError)
 	// POST /resumes/:id/versions: snapshot a version
-	CreateVersion(ctx context.Context, userID string, id string) (*api.VersionResponse, *models.ApiError)
+	CreateVersion(ctx context.Context, userID string, id string, req api.CreateVersionRequest) (*api.VersionResponse, *models.ApiError)
 	// POST /resumes/:id/export: export PDF, or Word for subscribers
 	ExportResume(ctx context.Context, userID string, id string, req api.ExportResumeRequest) (*api.FileResponse, *models.ApiError)
 	// POST /resumes/:id/ats-check: the 24 CV rules
@@ -373,7 +373,7 @@ func (s *resumeService) ListVersions(ctx context.Context, userID string, id stri
 	return out, nil
 }
 
-func (s *resumeService) CreateVersion(ctx context.Context, userID string, id string) (*api.VersionResponse, *models.ApiError) {
+func (s *resumeService) CreateVersion(ctx context.Context, userID string, id string, req api.CreateVersionRequest) (*api.VersionResponse, *models.ApiError) {
 	if !isUUID(id) {
 		return nil, newError(http.StatusBadRequest, "invalid resume id")
 	}
@@ -383,7 +383,7 @@ func (s *resumeService) CreateVersion(ctx context.Context, userID string, id str
 		if err != nil {
 			return err
 		}
-		meta, err = s.repo.InsertVersion(ctx, id, versionNo, content)
+		meta, err = s.repo.InsertVersion(ctx, id, versionNo, req.Label, content)
 		return err
 	})
 	if err != nil {

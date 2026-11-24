@@ -128,10 +128,17 @@ func ListVersions(svc services.ResumeService) gin.HandlerFunc {
 	}
 }
 
-// CreateVersion: POST /resumes/:id/versions (user) snapshot a version.
+// CreateVersion: POST /resumes/:id/versions (user) snapshot a version, with an optional label key.
 func CreateVersion(svc services.ResumeService) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		result, apiErr := svc.CreateVersion(c.Request.Context(), c.GetString("user_id"), c.Param("id"))
+		var req api.CreateVersionRequest
+		if c.Request.ContentLength != 0 {
+			if err := c.ShouldBindJSON(&req); err != nil {
+				models.FormatError(c, &models.ApiError{Code: http.StatusBadRequest, Error: errors.New("invalid version label")})
+				return
+			}
+		}
+		result, apiErr := svc.CreateVersion(c.Request.Context(), c.GetString("user_id"), c.Param("id"), req)
 		if apiErr != nil {
 			models.FormatError(c, apiErr)
 			return

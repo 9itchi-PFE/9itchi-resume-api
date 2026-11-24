@@ -42,6 +42,7 @@ type ResumeVersionMeta struct {
 	ID        string    `db:"id"`
 	ResumeID  string    `db:"resume_id"`
 	VersionNo int       `db:"version_no"`
+	Label     string    `db:"label"`
 	CreatedAt time.Time `db:"created_at"`
 }
 
@@ -50,6 +51,7 @@ type ResumeVersion struct {
 	ID        string    `db:"id"`
 	ResumeID  string    `db:"resume_id"`
 	VersionNo int       `db:"version_no"`
+	Label     string    `db:"label"`
 	Content   []byte    `db:"content"`
 	CreatedAt time.Time `db:"created_at"`
 }

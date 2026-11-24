@@ -71,7 +71,7 @@ func ResumeSummaryToItem(r db.ResumeSummary) api.ResumeListItem {
 }
 
 func VersionToResponse(v db.ResumeVersionMeta) api.VersionResponse {
-	return api.VersionResponse{ID: v.ID, VersionNo: v.VersionNo, CreatedAt: v.CreatedAt}
+	return api.VersionResponse{ID: v.ID, VersionNo: v.VersionNo, Label: v.Label, CreatedAt: v.CreatedAt}
 }
 
 func TemplateToResponse(t *db.Template) api.TemplateResponse {

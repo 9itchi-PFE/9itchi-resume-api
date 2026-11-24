@@ -163,7 +163,14 @@ type ListResumesResponse struct {
 type VersionResponse struct {
 	ID        string    `json:"id"`
 	VersionNo int       `json:"version_no"`
+	Label     string    `json:"label"`
 	CreatedAt time.Time `json:"created_at"`
+}
+
+// CreateVersionRequest is the optional body of POST /resumes/:id/versions: a short key for the history tab
+// (bullet_rewritten, template_changed, section_added, manual...), translated by the client.
+type CreateVersionRequest struct {
+	Label string `json:"label" binding:"omitempty,max=100,printascii"`
 }
 
 type ListVersionsResponse struct {

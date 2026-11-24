@@ -150,17 +150,18 @@ func TestCreateVersionUsesBumpedNumber(t *testing.T) {
 	f := newFixture()
 	f.resumes.BumpVersionFn = func(context.Context, string, string) (int, []byte, error) { return 3, []byte(`{}`), nil }
 	var gotNo int
-	f.resumes.InsertVersionFn = func(_ context.Context, id string, no int, _ []byte) (*db.ResumeVersionMeta, error) {
+	f.resumes.InsertVersionFn = func(_ context.Context, id string, no int, label string, _ []byte) (*db.ResumeVersionMeta, error) {
 		gotNo = no
-		return &db.ResumeVersionMeta{ID: "v", ResumeID: id, VersionNo: no}, nil
+		return &db.ResumeVersionMeta{ID: "v", ResumeID: id, VersionNo: no, Label: label}, nil
 	}
-	got, apiErr := f.svc.CreateVersion(context.Background(), uid, rid)
+	got, apiErr := f.svc.CreateVersion(context.Background(), uid, rid, api.CreateVersionRequest{Label: "template_changed"})
 	require.Nil(t, apiErr)
 	assert.Equal(t, 3, gotNo)
 	assert.Equal(t, 3, got.VersionNo)
+	assert.Equal(t, "template_changed", got.Label)
 
 	f.resumes.BumpVersionFn = func(context.Context, string, string) (int, []byte, error) { return 0, nil, repositories.ErrNotFound }
-	_, apiErr = f.svc.CreateVersion(context.Background(), "other", rid)
+	_, apiErr = f.svc.CreateVersion(context.Background(), "other", rid, api.CreateVersionRequest{})
 	require.NotNil(t, apiErr)
 	assert.Equal(t, http.StatusNotFound, apiErr.Code)
 }

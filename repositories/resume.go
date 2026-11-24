@@ -27,7 +27,7 @@ type ResumeRepository interface {
 	Delete(ctx context.Context, userID, id string) error
 	// BumpVersion increments resumes.version and returns the new number and the current content.
 	BumpVersion(ctx context.Context, userID, id string) (int, []byte, error)
-	InsertVersion(ctx context.Context, resumeID string, versionNo int, content []byte) (*db.ResumeVersionMeta, error)
+	InsertVersion(ctx context.Context, resumeID string, versionNo int, label string, content []byte) (*db.ResumeVersionMeta, error)
 	// ListVersions never selects the content column.
 	ListVersions(ctx context.Context, resumeID string) ([]db.ResumeVersionMeta, error)
 	// CountByUser returns how many resumes the user has (free plan quota).
@@ -144,12 +144,12 @@ func (r *resumeRepository) BumpVersion(ctx context.Context, userID, id string) (
 	return version, content, MapError(err)
 }
 
-func (r *resumeRepository) InsertVersion(ctx context.Context, resumeID string, versionNo int, content []byte) (*db.ResumeVersionMeta, error) {
+func (r *resumeRepository) InsertVersion(ctx context.Context, resumeID string, versionNo int, label string, content []byte) (*db.ResumeVersionMeta, error) {
 	ctx, cancel := QueryTimeout(ctx)
 	defer cancel()
 	rows, err := r.store.Conn(ctx).Query(ctx,
-		`INSERT INTO resume_versions (resume_id, version_no, content) VALUES ($1, $2, $3)
-		 RETURNING id, resume_id, version_no, created_at`, resumeID, versionNo, content)
+		`INSERT INTO resume_versions (resume_id, version_no, label, content) VALUES ($1, $2, $3, $4)
+		 RETURNING id, resume_id, version_no, label, created_at`, resumeID, versionNo, label, content)
 	if err != nil {
 		return nil, MapError(err)
 	}
@@ -161,7 +161,7 @@ func (r *resumeRepository) ListVersions(ctx context.Context, resumeID string) ([
 	ctx, cancel := QueryTimeout(ctx)
 	defer cancel()
 	rows, err := r.store.Conn(ctx).Query(ctx,
-		`SELECT id, resume_id, version_no, created_at FROM resume_versions
+		`SELECT id, resume_id, version_no, label, created_at FROM resume_versions
 		 WHERE resume_id = $1 ORDER BY version_no DESC`, resumeID)
 	if err != nil {
 		return nil, MapError(err)
@@ -207,7 +207,7 @@ func (r *resumeRepository) GetVersion(ctx context.Context, resumeID, versionID s
 	ctx, cancel := QueryTimeout(ctx)
 	defer cancel()
 	rows, err := r.store.Conn(ctx).Query(ctx,
-		`SELECT id, resume_id, version_no, content, created_at FROM resume_versions WHERE id = $1 AND resume_id = $2`,
+		`SELECT id, resume_id, version_no, label, content, created_at FROM resume_versions WHERE id = $1 AND resume_id = $2`,
 		versionID, resumeID)
 	if err != nil {
 		return nil, MapError(err)

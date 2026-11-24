@@ -57,7 +57,8 @@ func TestRestoreVersionSavesCurrentFirst(t *testing.T) {
 		steps = append(steps, "bump")
 		return 7, []byte(`{"summary":"current"}`), nil
 	}
-	f.resumes.InsertVersionFn = func(_ context.Context, _ string, n int, c []byte) (*db.ResumeVersionMeta, error) {
+	f.resumes.InsertVersionFn = func(_ context.Context, _ string, n int, label string, c []byte) (*db.ResumeVersionMeta, error) {
+		assert.Equal(t, LabelBeforeRestore, label)
 		steps = append(steps, "save:"+string(c))
 		assert.Equal(t, 7, n)
 		return &db.ResumeVersionMeta{}, nil
