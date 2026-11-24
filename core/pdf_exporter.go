@@ -421,7 +421,7 @@ func (pdfExporter) Render(ctx context.Context, c api.ResumeContent, layout strin
 	body := bodyFonts[bodyFontKey(c.Style)]
 	for _, f := range []struct{ family, style, file string }{
 		{sans, "", body.regular}, {sans, "I", body.italic}, {sans, "B", body.bold},
-		{sansSemi, "", body.semi}, {serif, "B", "SourceSerif4-Bold.ttf"},
+		{sansSemi, "", body.semi}, {serif, "B", body.bold},
 	} {
 		data, err := fontFiles.ReadFile("fonts/" + f.file)
 		if err != nil {
@@ -492,7 +492,7 @@ func (d *cv) classic(opts RenderOptions) {
 		align = "C"
 	}
 	pdf.SetXY(textX, d.textTop(top, 26, textX != d.x || tw != d.w, tw))
-	d.font(d.nameFamily(), "B", lk.name, lk.col("name", lk.ink(rgb{17, 17, 17})))
+	d.font(d.nameFamily(), "B", lk.name, lk.col("name", cvBlue))
 	inline := lk.inlineHeader() && d.c.Contact.Headline != ""
 	if inline {
 		// name and professional title share the first line, as in the preview
@@ -500,7 +500,7 @@ func (d *cv) classic(opts RenderOptions) {
 		pdf.SetMargins(textX, tp, 210-textX-tw)
 		pdf.SetX(textX)
 		pdf.Write(lk.name*ptToMM*1.15, cleanText(d.c.Contact.Name)+"  ")
-		d.font(sans, "", lk.title, lk.col("title", cvBlue))
+		d.font(sans, "I", lk.title, lk.col("title", cvBlue))
 		pdf.Write(lk.name*ptToMM*1.15, cleanText(d.c.Contact.Headline))
 		pdf.Ln(lk.name * ptToMM * 1.15)
 		pdf.SetMargins(left, tp, right)
@@ -655,6 +655,10 @@ func (d *cv) rule(col rgb, width float64) {
 // contactLine writes email · phone · location · links as one wrapped line, links in linkCol. A line that fits is
 // centred when align is "C".
 func (d *cv) contactLine(x, w, size float64, col, linkCol rgb, align string) {
+	if d.lk.sep == "icon" {
+		d.contactIcons(x, w, size, col, linkCol, align)
+		return
+	}
 	pdf := d.pdf
 	type part struct {
 		t    string
