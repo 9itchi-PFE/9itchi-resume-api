@@ -52,8 +52,8 @@ type ResumeService interface {
 	CreateVersion(ctx context.Context, userID string, id string) (*api.VersionResponse, *models.ApiError)
 	// POST /resumes/:id/export: export PDF (docx unsupported)
 	ExportResume(ctx context.Context, userID string, id string, req api.ExportResumeRequest) (*api.FileResponse, *models.ApiError)
-	// POST /resumes/:id/ats-check: ATS score and suggestions
-	ATSCheck(ctx context.Context, userID string, id string) (any, *models.ApiError)
+	// POST /resumes/:id/ats-check: the 24 CV rules
+	ATSCheck(ctx context.Context, userID string, id string, req api.ATSCheckRequest) (*api.ATSCheckResponse, *models.ApiError)
 	// GET /internal/resumes/:id/pdf: latest exported PDF bytes (email attachments), no user scoping
 	InternalResumePDF(ctx context.Context, id string) (*api.FileContent, *models.ApiError)
 }
@@ -436,8 +436,41 @@ func (s *resumeService) ExportResume(ctx context.Context, userID string, id stri
 	return &resp, nil
 }
 
-func (s *resumeService) ATSCheck(_ context.Context, _ string, _ string) (any, *models.ApiError) {
-	return nil, models.NotImplemented()
+func (s *resumeService) ATSCheck(ctx context.Context, userID string, id string, req api.ATSCheckRequest) (*api.ATSCheckResponse, *models.ApiError) {
+	if !isUUID(id) {
+		return nil, newError(http.StatusBadRequest, "invalid resume id")
+	}
+	res, err := s.repo.Get(ctx, userID, id)
+	if err != nil {
+		return nil, repoError(err, "resume not found")
+	}
+	content := mapping.ParseContent(res.Content)
+	layout := ""
+	if res.TemplateID != nil {
+		if t, err := s.templates.Get(ctx, *res.TemplateID); err == nil {
+			layout = t.Layout
+		}
+	}
+	lang := ""
+	if res.Language != nil {
+		lang = *res.Language
+	}
+	headings := "fr"
+	if lang == "en" {
+		headings = "en"
+	}
+	filename := ""
+	if name := exportFilename(content.Contact.Name, ""); name != "" {
+		filename = name + ".pdf"
+	}
+	out := core.CheckATS(core.ATSInput{
+		Content:        content,
+		Language:       lang,
+		TargetLanguage: req.TargetLanguage,
+		ExportFilename: filename,
+		Rendered:       core.RenderForCheck(ctx, content, layout, headings),
+	})
+	return &out, nil
 }
 
 func (s *resumeService) InternalResumePDF(ctx context.Context, id string) (*api.FileContent, *models.ApiError) {

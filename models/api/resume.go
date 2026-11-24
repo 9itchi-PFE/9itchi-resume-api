@@ -123,3 +123,32 @@ type UploadResumeResponse struct {
 	Resume ResumeResponse `json:"resume"`
 	File   FileResponse   `json:"file"`
 }
+
+// ATSCheckRequest is the optional body of POST /resumes/:id/ats-check.
+type ATSCheckRequest struct {
+	// TargetLanguage is the language of the company the student applies to (rule company_language).
+	TargetLanguage string `json:"target_language" binding:"omitempty,oneof=fr en ar"`
+}
+
+// ATSFinding points at the text that breaks a rule.
+type ATSFinding struct {
+	Where string `json:"where,omitempty"`
+	Was   string `json:"was,omitempty"`
+	Now   string `json:"now,omitempty"`
+}
+
+// ATSRuleResult is one of the 24 rules: status ok|fix|tip; Where/Was/Now are set on fix (Now also on file_name).
+type ATSRuleResult struct {
+	ID     string `json:"id"`
+	Group  string `json:"group"`
+	Status string `json:"status"`
+	ATSFinding
+}
+
+// ATSCheckResponse is the result of the 24 rules (screen 4.2).
+type ATSCheckResponse struct {
+	Passed int             `json:"passed"`
+	Total  int             `json:"total"`
+	ToFix  int             `json:"to_fix"`
+	Rules  []ATSRuleResult `json:"rules"`
+}

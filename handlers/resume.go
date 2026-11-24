@@ -160,7 +160,14 @@ func ExportResume(svc services.ResumeService) gin.HandlerFunc {
 // ATSCheck: POST /resumes/:id/ats-check (user) ATS score and suggestions. Not implemented yet.
 func ATSCheck(svc services.ResumeService) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		result, apiErr := svc.ATSCheck(c.Request.Context(), c.GetString("user_id"), c.Param("id"))
+		var req api.ATSCheckRequest
+		if c.Request.ContentLength != 0 {
+			if err := c.ShouldBindJSON(&req); err != nil {
+				models.FormatError(c, &models.ApiError{Code: http.StatusBadRequest, Error: err})
+				return
+			}
+		}
+		result, apiErr := svc.ATSCheck(c.Request.Context(), c.GetString("user_id"), c.Param("id"), req)
 		if apiErr != nil {
 			models.FormatError(c, apiErr)
 			return

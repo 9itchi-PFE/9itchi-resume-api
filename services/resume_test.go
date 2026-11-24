@@ -291,10 +291,33 @@ func TestExportRegistryOnlyPDF(t *testing.T) {
 	assert.Contains(t, reg, "pdf")
 }
 
-func TestATSCheckStaysNotImplemented(t *testing.T) {
-	_, apiErr := newFixture().svc.ATSCheck(context.Background(), uid, rid)
+func TestATSCheckService(t *testing.T) {
+	f := newFixture()
+	f.resumes.GetFn = func(_ context.Context, userID, id string) (*db.Resume, error) {
+		if userID != uid {
+			return nil, repositories.ErrNotFound
+		}
+		lang := "fr"
+		return &db.Resume{ID: id, Language: &lang, Content: []byte(`{"contact":{"name":"Ines Mansour","email":"i@x.tn","location":"Sfax"}}`)}, nil
+	}
+	res, apiErr := f.svc.ATSCheck(context.Background(), uid, rid, api.ATSCheckRequest{TargetLanguage: "en"})
+	require.Nil(t, apiErr)
+	assert.Equal(t, 24, res.Total)
+	byID := map[string]api.ATSRuleResult{}
+	for _, r := range res.Rules {
+		byID[r.ID] = r
+	}
+	assert.Equal(t, "contact.phone", byID["contact_details"].Where)
+	assert.Equal(t, "ines_mansour.pdf", byID["file_name"].Now)
+	assert.Equal(t, "fix", byID["company_language"].Status)
+	assert.Equal(t, "ok", byID["one_page"].Status)
+
+	_, apiErr = f.svc.ATSCheck(context.Background(), "other", rid, api.ATSCheckRequest{})
 	require.NotNil(t, apiErr)
-	assert.Equal(t, http.StatusNotImplemented, apiErr.Code)
+	assert.Equal(t, http.StatusNotFound, apiErr.Code)
+	_, apiErr = f.svc.ATSCheck(context.Background(), uid, "nope", api.ATSCheckRequest{})
+	require.NotNil(t, apiErr)
+	assert.Equal(t, http.StatusBadRequest, apiErr.Code)
 }
 
 func TestInternalResumePDF(t *testing.T) {
