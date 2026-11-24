@@ -16,6 +16,7 @@ type look struct {
 	nameSerif                      bool
 	upper                          bool
 	dateBelow, center              bool
+	photoRight                     bool
 	sep                            string
 	showPhoto                      bool
 	listChar                       string
@@ -122,6 +123,7 @@ func newLook(layout string, s *api.CVStyle) look {
 		l.upper = false
 	}
 	l.dateBelow = s.DatePosition == "below"
+	l.photoRight = s.PhotoPos == "right"
 	l.listChar, l.indent = "•", 4
 	if s.ListStyle == "hyphen" {
 		l.listChar = "-"

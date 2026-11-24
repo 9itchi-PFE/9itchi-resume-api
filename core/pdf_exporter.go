@@ -445,11 +445,10 @@ func (d *cv) classic(opts RenderOptions) {
 
 	// Header: photo, name, headline in small caps, contact line.
 	top := pdf.GetY()
-	textX := d.x
-	if d.photo(opts, d.x+13, top+13, 13, &blue) {
-		textX = d.x + 26 + 6
+	textX, tw := d.x, d.w
+	if cx := photoCenter(d, 13); d.photo(opts, cx, top+13, 13, &blue) {
+		textX, tw = textAfterPhoto(d, 13)
 	}
-	tw := d.x + d.w - textX
 	align := "L"
 	if lk.center {
 		align = "C"
@@ -903,15 +902,8 @@ func (d *cv) compact(opts RenderOptions) {
 	}
 	textX, tw := d.x, d.w
 	top := pdf.GetY()
-	if len(opts.Photo) > 0 {
-		const r = 11.0
-		cx := d.x + r
-		if lk.center {
-			cx = 105
-		}
-		if d.photo(opts, cx, top+r, r, nil) {
-			top += 2*r + 2
-		}
+	if cx := photoCenter(d, 11); d.photo(opts, cx, top+11, 11, nil) {
+		textX, tw = textAfterPhoto(d, 11)
 	}
 	pdf.SetXY(textX, top)
 	d.font(d.nameFamily(), "B", lk.name, lk.col("name", ink))
@@ -931,8 +923,8 @@ func (d *cv) compact(opts RenderOptions) {
 		pdf.SetX(textX)
 		pdf.MultiCell(tw, d.lh(b-0.5), cleanText(line), "", align, false)
 	}
-	if pdf.GetY() < top {
-		pdf.SetY(top)
+	if pdf.GetY() < top+22 && textX != d.x || pdf.GetY() < top+22 && tw != d.w {
+		pdf.SetY(top + 22)
 	}
 	head := func(t string) {
 		pdf.Ln(2.6)
@@ -1039,4 +1031,20 @@ func suffixIf(s, suf string) string {
 		return ""
 	}
 	return suf
+}
+
+// photoCenter is the x of the header photo's centre: the left or right edge of the text block, as the style asks.
+func photoCenter(d *cv, r float64) float64 {
+	if d.lk.photoRight {
+		return d.x + d.w - r
+	}
+	return d.x + r
+}
+
+// textAfterPhoto is the text block left beside (or right before) a header photo of radius r.
+func textAfterPhoto(d *cv, r float64) (x, w float64) {
+	if d.lk.photoRight {
+		return d.x, d.w - 2*r - 6
+	}
+	return d.x + 2*r + 6, d.w - 2*r - 6
 }

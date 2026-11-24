@@ -22,6 +22,9 @@ type CVStyle struct {
 	BodyFont     string   `json:"body_font,omitempty" binding:"omitempty,oneof=sourcesans lato carlito tinos"` // applies to all body text
 	HeadingCase  string   `json:"heading_case,omitempty" binding:"omitempty,oneof=capitalize uppercase"`
 	DatePosition string   `json:"date_position,omitempty" binding:"omitempty,oneof=right below"`
+	LocationPos   string `json:"location_position,omitempty" binding:"omitempty,oneof=line date"`
+	MetaOrder     string `json:"meta_order,omitempty" binding:"omitempty,oneof=date_first location_first"`
+	PhotoPos      string `json:"photo_position,omitempty" binding:"omitempty,oneof=left right"`
 	ListStyle     string `json:"list_style,omitempty" binding:"omitempty,oneof=bullet hyphen"`
 	IndentBody    *bool  `json:"indent_body,omitempty"`
 	SubtitleStyle string `json:"subtitle_style,omitempty" binding:"omitempty,oneof=normal bold italic"`

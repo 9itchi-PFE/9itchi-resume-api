@@ -67,6 +67,9 @@ type Project struct {
 	URL         string   `json:"url,omitempty" binding:"max=300"`
 	Hidden      bool     `json:"hidden,omitempty"`
 	Year        string   `json:"year" binding:"max=30"`
+	Start       string   `json:"start,omitempty" binding:"max=30"`
+	End         string   `json:"end,omitempty" binding:"max=30"`
+	Location    string   `json:"location,omitempty" binding:"max=200"`
 	Description []string `json:"description" binding:"max=30,dive,max=1000"`
 }
 

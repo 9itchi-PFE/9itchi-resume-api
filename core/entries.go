@@ -14,13 +14,51 @@ func visibleEntries(c api.ResumeContent) api.ResumeContent {
 	c.Projects = keep(c.Projects, func(p api.Project) bool { return !p.Hidden })
 	c.Certifications = keep(c.Certifications, func(x api.Certification) bool { return !x.Hidden })
 	c.Summary = plain(c.Summary)
+	beside := c.Style != nil && c.Style.LocationPos == "date"
+	order := c.Style != nil && c.Style.MetaOrder == "location_first"
 	for i := range c.Experience {
-		c.Experience[i].Description = plainAll(c.Experience[i].Description)
+		e := &c.Experience[i]
+		e.Description = plainAll(e.Description)
+		e.Title, e.Company, e.Kind, e.Location = plain(e.Title), plain(e.Company), plain(e.Kind), plain(e.Location)
+		if beside && strings.TrimSpace(e.Location) != "" {
+			e.Start, e.End, e.Location = metaText(e.Start, e.End, e.Location, order), "", ""
+		}
+	}
+	for i := range c.Education {
+		e := &c.Education[i]
+		e.School, e.Degree, e.Location = plain(e.School), plain(e.Degree), plain(e.Location)
+		if beside && strings.TrimSpace(e.Location) != "" {
+			e.Start, e.End, e.Location = metaText(e.Start, e.End, e.Location, order), "", ""
+		}
 	}
 	for i := range c.Projects {
-		c.Projects[i].Description = plainAll(c.Projects[i].Description)
+		p := &c.Projects[i]
+		p.Description = plainAll(p.Description)
+		p.Name, p.Tech = plain(p.Name), plain(p.Tech)
+		loc := ""
+		if beside {
+			loc = strings.TrimSpace(p.Location)
+		}
+		if r := metaText(p.Start, p.End, loc, order); r != "" {
+			p.Year = r
+		}
+	}
+	for i := range c.Certifications {
+		c.Certifications[i].Name, c.Certifications[i].Issuer = plain(c.Certifications[i].Name), plain(c.Certifications[i].Issuer)
 	}
 	return c
+}
+
+// metaText is the right-hand text of an entry: its dates and, when given, the location beside them; mirrors the client's metaText.
+func metaText(start, end, loc string, locationFirst bool) string {
+	dates := join(" — ", start, end)
+	if strings.TrimSpace(loc) == "" {
+		return dates
+	}
+	if locationFirst {
+		return join(" · ", loc, dates)
+	}
+	return join(" · ", dates, loc)
 }
 
 var (
