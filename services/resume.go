@@ -113,6 +113,12 @@ func NewResumeService(
 
 // encodeContent validates and serialises content for the jsonb column.
 func encodeContent(c api.ResumeContent) ([]byte, *models.ApiError) {
+	if !c.Style.Valid() {
+		return nil, newError(http.StatusBadRequest, "invalid style color (use #RRGGBB)")
+	}
+	if !api.ValidSectionOrder(c.SectionOrderKeys) {
+		return nil, newError(http.StatusBadRequest, "invalid section order")
+	}
 	raw, err := json.Marshal(mapping.NormalizeContent(c))
 	if err != nil {
 		return nil, newError(http.StatusBadRequest, "invalid content")

@@ -126,12 +126,13 @@ type cv struct {
 	pdf     *fpdf.Fpdf
 	c       api.ResumeContent
 	titles  map[string]string
+	lk      look
 	body    float64 // pt
 	x, w    float64 // column, mm
 	pending []seg   // left side of the next row, set by the row's left callback
 }
 
-func (d *cv) lh(size float64) float64 { return size * ptToMM * 1.38 }
+func (d *cv) lh(size float64) float64 { return size * ptToMM * d.lk.lineH }
 
 func (d *cv) font(family, style string, size float64, col rgb) {
 	d.pdf.SetFont(family, style, size)
@@ -150,6 +151,13 @@ func (d *cv) para(text string, size float64) {
 // row writes left text and right text on one line; the left text wraps before the right one.
 func (d *cv) row(left, right func(), rightText string, size float64) {
 	pdf := d.pdf
+	if d.lk.dateBelow && strings.TrimSpace(rightText) != "" {
+		d.row(left, right, "", size)
+		right()
+		pdf.SetX(d.x)
+		pdf.CellFormat(d.w, d.lh(size), cleanText(rightText), "", 1, "L", false, 0, "")
+		return
+	}
 	y := pdf.GetY()
 	rw := 0.0
 	if strings.TrimSpace(rightText) != "" {
@@ -338,7 +346,16 @@ func (pdfExporter) Render(ctx context.Context, c api.ResumeContent, layout strin
 	if !ok {
 		titles = headings["fr"]
 	}
-	d := &cv{pdf: pdf, c: c, titles: titles}
+	d := &cv{pdf: pdf, c: c, titles: titles, lk: newLook(layout, c.Style)}
+	if !d.lk.showPhoto {
+		opts.Photo = nil
+	}
+	if d.lk.bg != nil && layout != "modern" {
+		pdf.SetHeaderFunc(func() {
+			pdf.SetFillColor(d.lk.bg.r, d.lk.bg.g, d.lk.bg.b)
+			pdf.Rect(0, 0, 210, 297, "F")
+		})
+	}
 	if opts.Branded {
 		pdf.SetFooterFunc(func() {
 			pdf.SetY(-9)
@@ -366,111 +383,153 @@ func (pdfExporter) Render(ctx context.Context, c api.ResumeContent, layout strin
 
 func (d *cv) classic(opts RenderOptions) {
 	pdf := d.pdf
-	const margin = 14.0
-	d.body = 10.5
-	pdf.SetMargins(margin, 12, margin)
-	pdf.SetAutoPageBreak(true, 12)
+	lk := d.lk
+	d.body = lk.base
+	pdf.SetMargins(lk.mx, lk.my, lk.mx)
+	pdf.SetAutoPageBreak(true, lk.my)
 	pdf.AddPage()
-	d.x, d.w = margin, 210-2*margin
+	d.x, d.w = lk.mx, 210-2*lk.mx
+	blue := lk.col("rules", cvBlue)
 
 	// Header: photo, name, headline in small caps, contact line.
 	top := pdf.GetY()
 	textX := d.x
-	if d.photo(opts, d.x+13, top+13, 13, &cvBlue) {
+	if d.photo(opts, d.x+13, top+13, 13, &blue) {
 		textX = d.x + 26 + 6
 	}
 	tw := d.x + d.w - textX
+	align := "L"
+	if lk.center {
+		align = "C"
+	}
 	pdf.SetXY(textX, top)
-	d.font(sans, "B", 23, rgb{17, 17, 17})
-	pdf.MultiCell(tw, 23*ptToMM*1.15, cleanText(d.c.Contact.Name), "", "L", false)
+	d.font(d.nameFamily(), "B", lk.name, lk.col("name", lk.ink(rgb{17, 17, 17})))
+	pdf.MultiCell(tw, lk.name*ptToMM*1.15, cleanText(d.c.Contact.Name), "", align, false)
 	pdf.Ln(0.8)
 	pdf.SetX(textX)
-	d.smallCaps(d.c.Contact.Headline, 12, cvBlue, tw)
+	if lk.center {
+		d.font(sans, "", lk.title, lk.col("title", cvBlue))
+		pdf.MultiCell(tw, d.lh(lk.title), cleanText(d.c.Contact.Headline), "", "C", false)
+	} else {
+		d.smallCaps(d.c.Contact.Headline, lk.title, lk.col("title", cvBlue), tw)
+	}
 	pdf.Ln(0.6)
-	d.contactLine(textX, tw, 9.5, cvGrey, &cvBlue)
+	d.contactLine(textX, tw, lk.base-1, lk.ink(cvGrey), lk.col("links", cvBlue), align)
 	if pdf.GetY() < top+26 && textX != d.x {
 		pdf.SetY(top + 26)
 	}
 	pdf.Ln(2.5)
 
-	if s := strings.TrimSpace(d.c.Summary); s != "" {
-		d.rule(cvBlue, 0.35)
-		pdf.Ln(1.6)
-		d.font(sans, "", d.body, cvInk)
-		d.para(s, d.body)
-	}
 	head := func(t string) {
 		pdf.Ln(2.4)
-		d.font(sans, "", 13, cvBlue)
+		d.font(sans, "", lk.head, lk.col("headings", cvBlue))
 		pdf.SetX(d.x)
-		pdf.CellFormat(d.w, d.lh(13)*0.9, cleanText(strings.ToUpper(t)), "", 1, "L", false, 0, "")
-		d.rule(cvBlue, 0.35)
+		pdf.CellFormat(d.w, d.lh(lk.head)*0.9, cleanText(lk.heading(t)), "", 1, "L", false, 0, "")
+		d.rule(blue, 0.35)
 		pdf.Ln(1)
 	}
-	b := d.body
-	bold := func(t string) seg { return seg{t, sans, "B", cvInk} }
-	plain := func(t string) seg { return seg{t, sans, "", cvInk} }
-	blue := func(t string) seg { return seg{t, sans, "", cvBlue} }
-	rightPlain := func() { d.font(sans, "", b, cvInk) }
-	rightBold := func() { d.font(sans, "B", b, cvInk) }
+	b, eb := d.body, lk.entry
+	ink := lk.ink(cvInk)
+	entry := lk.col("entry_title", cvBlue)
+	bold := func(t string) seg { return seg{t, sans, "B", ink} }
+	plain := func(t string) seg { return seg{t, sans, "", ink} }
+	accented := func(t string) seg { return seg{t, sans, "", entry} }
+	dateCol := lk.col("dates", ink)
+	rightPlain := func() { d.font(sans, "", eb, dateCol) }
+	rightBold := func() { d.font(sans, "B", eb, dateCol) }
+	between := func() { pdf.Ln(lk.gapOr(1)) }
 
-	if len(d.c.Education) > 0 {
-		head(d.titles["education"])
-		for i, e := range d.c.Education {
-			if i > 0 {
-				pdf.Ln(1)
+	sections := map[string]func(){
+		"summary": func() {
+			if s := strings.TrimSpace(d.c.Summary); s != "" {
+				d.rule(blue, 0.35)
+				pdf.Ln(1.6)
+				d.font(sans, "", b, ink)
+				d.para(s, b)
 			}
-			d.row(d.segs(bold(e.Degree)), rightPlain, dates(e.Start, e.End), b)
-			if e.School != "" || e.Location != "" {
-				d.row(d.segs(plain(e.School)), rightPlain, e.Location, b)
+		},
+		"education": func() {
+			if len(d.c.Education) == 0 {
+				return
 			}
-		}
-	}
-	if len(d.c.Experience) > 0 {
-		head(d.titles["experience"])
-		for i, e := range d.c.Experience {
-			if i > 0 {
-				pdf.Ln(1)
-			}
-			d.row(d.segs(bold(e.Title)), rightBold, dates(e.Start, e.End), b)
-			if e.Company != "" || e.Kind != "" || e.Location != "" {
-				parts := []seg{blue(e.Company)}
-				if e.Kind != "" {
-					parts = append(parts, plain(" ("+e.Kind+")"))
+			head(d.titles["education"])
+			for i, e := range d.c.Education {
+				if i > 0 {
+					between()
 				}
-				d.row(d.segs(parts...), rightPlain, e.Location, b)
+				d.row(d.segs(bold(e.Degree)), rightPlain, dates(e.Start, e.End), eb)
+				if e.School != "" || e.Location != "" {
+					d.row(d.segs(plain(e.School)), rightPlain, e.Location, eb)
+				}
 			}
-			d.bullets(e.Description, b, cvInk)
+		},
+		"experience": func() {
+			if len(d.c.Experience) == 0 {
+				return
+			}
+			head(d.titles["experience"])
+			for i, e := range d.c.Experience {
+				if i > 0 {
+					between()
+				}
+				d.row(d.segs(bold(e.Title)), rightBold, dates(e.Start, e.End), eb)
+				if e.Company != "" || e.Kind != "" || e.Location != "" {
+					parts := []seg{accented(e.Company)}
+					if e.Kind != "" {
+						parts = append(parts, plain(" ("+e.Kind+")"))
+					}
+					d.row(d.segs(parts...), rightPlain, e.Location, eb)
+				}
+				d.bullets(e.Description, b, ink)
+			}
+		},
+		"projects": func() {
+			if len(d.c.Projects) == 0 {
+				return
+			}
+			head(d.titles["projects"])
+			for _, p := range d.c.Projects {
+				d.row(d.segs(bold(p.Name)), rightPlain, join(" · ", p.Tech, p.Year), eb)
+				d.bullets(p.Description, b, ink)
+			}
+		},
+		"skills": func() { d.skillsGrid(head, b, ink) },
+		"certifications": func() {
+			if len(d.c.Certifications) == 0 {
+				return
+			}
+			head(d.titles["certifications"])
+			for _, ce := range d.c.Certifications {
+				d.row(d.segs(bold(ce.Name), plain(prefix(", ", ce.Issuer))), rightPlain, ce.Year, eb)
+			}
+		},
+		"languages": func() {
+			if len(d.c.Languages) == 0 {
+				return
+			}
+			head(d.titles["languages"])
+			for _, l := range d.c.Languages {
+				name, level := splitLanguage(l)
+				d.row(d.segs(bold(name)), rightPlain, level, eb)
+			}
+		},
+	}
+	for _, key := range d.c.SectionOrder() {
+		if f := sections[key]; f != nil {
+			f()
+		} else if x, ok := extraAt(d.c, key); ok && len(nonEmpty(x.Items...)) > 0 {
+			head(x.Title)
+			d.bullets(x.Items, b, ink)
 		}
 	}
-	if len(d.c.Projects) > 0 {
-		head(d.titles["projects"])
-		for _, p := range d.c.Projects {
-			d.row(d.segs(bold(p.Name)), rightPlain, join(" · ", p.Tech, p.Year), b)
-			d.bullets(p.Description, b, cvInk)
-		}
+}
+
+// nameFamily is the font of the name and the modern headings.
+func (d *cv) nameFamily() string {
+	if d.lk.nameSerif {
+		return serif
 	}
-	d.skillsGrid(head, b, cvInk)
-	if len(d.c.Certifications) > 0 {
-		head(d.titles["certifications"])
-		for _, ce := range d.c.Certifications {
-			d.row(d.segs(bold(ce.Name), plain(prefix(", ", ce.Issuer))), rightPlain, ce.Year, b)
-		}
-	}
-	if len(d.c.Languages) > 0 {
-		head(d.titles["languages"])
-		for _, l := range d.c.Languages {
-			name, level := splitLanguage(l)
-			d.row(d.segs(bold(name)), rightPlain, level, b)
-		}
-	}
-	for _, x := range d.c.Extra {
-		if len(nonEmpty(x.Items...)) == 0 {
-			continue
-		}
-		head(x.Title)
-		d.bullets(x.Items, b, cvInk)
-	}
+	return sans
 }
 
 func prefix(p, s string) string {
@@ -488,8 +547,9 @@ func (d *cv) rule(col rgb, width float64) {
 	d.pdf.Line(d.x, y, d.x+d.w, y)
 }
 
-// contactLine writes email · phone · location · links as one wrapped line; links in linkCol when given.
-func (d *cv) contactLine(x, w, size float64, col rgb, linkCol *rgb) {
+// contactLine writes email · phone · location · links as one wrapped line, links in linkCol. A line that fits is
+// centred when align is "C".
+func (d *cv) contactLine(x, w, size float64, col, linkCol rgb, align string) {
 	pdf := d.pdf
 	type part struct {
 		t    string
@@ -505,18 +565,30 @@ func (d *cv) contactLine(x, w, size float64, col rgb, linkCol *rgb) {
 	if len(parts) == 0 {
 		return
 	}
+	sep := d.lk.separator()
 	left, top, right, _ := pdf.GetMargins()
 	pdf.SetLeftMargin(x)
 	pdf.SetRightMargin(210 - x - w)
-	pdf.SetX(x)
+	start := x
+	if align == "C" {
+		d.font(sans, "", size, col)
+		total := pdf.GetStringWidth(cleanText(sep)) * float64(len(parts)-1)
+		for _, p := range parts {
+			total += pdf.GetStringWidth(cleanText(p.t))
+		}
+		if total < w {
+			start = x + (w-total)/2
+		}
+	}
+	pdf.SetX(start)
 	for i, p := range parts {
 		if i > 0 {
 			d.font(sans, "", size, col)
-			pdf.Write(d.lh(size), " · ")
+			pdf.Write(d.lh(size), sep)
 		}
 		c := col
-		if p.link && linkCol != nil {
-			c = *linkCol
+		if p.link {
+			c = linkCol
 		}
 		d.font(sans, "", size, c)
 		pdf.Write(d.lh(size), cleanText(p.t))
@@ -562,15 +634,20 @@ func (d *cv) skillsGrid(head func(string), size float64, col rgb) {
 
 func (d *cv) modern(opts RenderOptions) {
 	pdf := d.pdf
+	lk := d.lk
 	const (
 		sideW = 210 * 0.34
 		pad   = 7.0
-		top   = 12.0
-		mainP = 9.0
 	)
-	d.body = 10
+	top, mainP := lk.my, lk.mx
+	side := lk.col("rules", cvNavy)
+	d.body = lk.base
 	pdf.SetHeaderFunc(func() {
-		pdf.SetFillColor(cvNavy.r, cvNavy.g, cvNavy.b)
+		if lk.bg != nil {
+			pdf.SetFillColor(lk.bg.r, lk.bg.g, lk.bg.b)
+			pdf.Rect(0, 0, 210, 297, "F")
+		}
+		pdf.SetFillColor(side.r, side.g, side.b)
 		pdf.Rect(0, 0, sideW, 297, "F")
 	})
 	pdf.SetMargins(pad, top, 210-sideW+pad)
@@ -585,6 +662,7 @@ func (d *cv) modern(opts RenderOptions) {
 	}
 	pdf.SetY(y)
 	b := d.body
+	eb := lk.entry
 	sideHead := func(t string) {
 		pdf.Ln(2.5)
 		d.font(sans, "B", 9, cvSideTxt)
@@ -607,28 +685,42 @@ func (d *cv) modern(opts RenderOptions) {
 		sideHead(d.titles["contact"])
 		sideLines(contact...)
 	}
-	if len(d.c.SkillGroups) > 0 || len(nonEmpty(d.c.Skills...)) > 0 {
-		sideHead(d.titles["skills"])
-		if len(d.c.SkillGroups) > 0 {
-			for _, g := range d.c.SkillGroups {
-				if g.Label != "" {
-					d.font(sansSemi, "", b-0.5, cvSideTxt)
-					d.para(g.Label, b-0.5)
+	sideSections := map[string]func(){
+		"skills": func() {
+			if len(d.c.SkillGroups) == 0 && len(nonEmpty(d.c.Skills...)) == 0 {
+				return
+			}
+			sideHead(d.titles["skills"])
+			if len(d.c.SkillGroups) > 0 {
+				for _, g := range d.c.SkillGroups {
+					if g.Label != "" {
+						d.font(sansSemi, "", b-0.5, cvSideTxt)
+						d.para(g.Label, b-0.5)
+					}
+					sideLines(strings.Join(nonEmpty(g.Items...), " · "))
 				}
-				sideLines(strings.Join(nonEmpty(g.Items...), " · "))
+			} else {
+				sk := nonEmpty(d.c.Skills...)
+				for i := 0; i < len(sk); i += 2 {
+					sideLines(strings.Join(sk[i:min(i+2, len(sk))], " · "))
+				}
 			}
-		} else {
-			sk := nonEmpty(d.c.Skills...)
-			for i := 0; i < len(sk); i += 2 {
-				sideLines(strings.Join(sk[i:min(i+2, len(sk))], " · "))
+		},
+		"languages": func() {
+			if len(d.c.Languages) == 0 {
+				return
 			}
-		}
+			sideHead(d.titles["languages"])
+			for _, l := range d.c.Languages {
+				name, level := splitLanguage(l)
+				sideLines(join(" · ", name, level))
+			}
+		},
 	}
-	if len(d.c.Languages) > 0 {
-		sideHead(d.titles["languages"])
-		for _, l := range d.c.Languages {
-			name, level := splitLanguage(l)
-			sideLines(join(" · ", name, level))
+	order := d.c.SectionOrder()
+	for _, key := range order {
+		if f := sideSections[key]; f != nil {
+			f()
 		}
 	}
 
@@ -637,69 +729,88 @@ func (d *cv) modern(opts RenderOptions) {
 	pdf.SetMargins(d.x, top, mainP)
 	pdf.SetAutoPageBreak(true, top)
 	pdf.SetXY(d.x, top)
-	d.font(serif, "B", 22, cvNavy)
-	d.para(d.c.Contact.Name, 22)
+	ink := lk.ink(cvInk)
+	d.font(d.nameFamily(), "B", lk.name, lk.col("name", cvNavy))
+	d.para(d.c.Contact.Name, lk.name)
 	if d.c.Contact.Headline != "" {
 		pdf.Ln(0.5)
-		d.font(sans, "", b+0.5, cvMuted)
-		d.para(d.c.Contact.Headline, b+0.5)
-	}
-	if s := strings.TrimSpace(d.c.Summary); s != "" {
-		pdf.Ln(2)
-		d.font(sans, "", b, cvInk)
-		d.para(s, b)
+		d.font(sans, "", lk.title, lk.col("title", cvMuted))
+		d.para(d.c.Contact.Headline, lk.title)
 	}
 	head := func(t string) {
 		pdf.Ln(3)
-		d.font(serif, "B", 13, cvNavy)
+		d.font(d.nameFamily(), "B", lk.head, lk.col("headings", cvNavy))
 		pdf.SetX(d.x)
-		pdf.CellFormat(d.w, d.lh(13), cleanText(t), "", 1, "L", false, 0, "")
+		pdf.CellFormat(d.w, d.lh(lk.head), cleanText(lk.heading(t)), "", 1, "L", false, 0, "")
 		pdf.Ln(0.4)
 	}
-	bold := func(t string) seg { return seg{t, sans, "B", cvInk} }
+	bold := func(t string) seg { return seg{t, sans, "B", lk.col("entry_title", ink)} }
 	muted := func(t string) seg { return seg{t, sans, "", cvMuted} }
-	right := func() { d.font(sans, "", b, cvMuted) }
-	if len(d.c.Education) > 0 {
-		head(d.titles["education"])
-		for _, e := range d.c.Education {
-			d.row(d.segs(bold(join(" — ", e.School, e.Degree))), right, dates(e.Start, e.End), b)
-			if e.Location != "" {
-				d.row(d.segs(muted(e.Location)), right, "", b)
+	right := func() { d.font(sans, "", eb, lk.col("dates", cvMuted)) }
+	between := func() { pdf.Ln(lk.gapOr(0.8)) }
+	mainSections := map[string]func(){
+		"summary": func() {
+			if s := strings.TrimSpace(d.c.Summary); s != "" {
+				pdf.Ln(2)
+				d.font(sans, "", b, ink)
+				d.para(s, b)
 			}
-			pdf.Ln(0.8)
-		}
-	}
-	if len(d.c.Experience) > 0 {
-		head(d.titles["experience"])
-		for _, e := range d.c.Experience {
-			d.row(d.segs(bold(join(" — ", e.Title, e.Company))), right, dates(e.Start, e.End), b)
-			if l := join(" · ", e.Kind, e.Location); l != "" {
-				d.row(d.segs(muted(l)), right, "", b)
+		},
+		"education": func() {
+			if len(d.c.Education) == 0 {
+				return
 			}
-			d.bullets(e.Description, b, cvInk)
-			pdf.Ln(0.8)
-		}
+			head(d.titles["education"])
+			for _, e := range d.c.Education {
+				d.row(d.segs(bold(join(" — ", e.School, e.Degree))), right, dates(e.Start, e.End), eb)
+				if e.Location != "" {
+					d.row(d.segs(muted(e.Location)), right, "", eb)
+				}
+				between()
+			}
+		},
+		"experience": func() {
+			if len(d.c.Experience) == 0 {
+				return
+			}
+			head(d.titles["experience"])
+			for _, e := range d.c.Experience {
+				d.row(d.segs(bold(join(" — ", e.Title, e.Company))), right, dates(e.Start, e.End), eb)
+				if l := join(" · ", e.Kind, e.Location); l != "" {
+					d.row(d.segs(muted(l)), right, "", eb)
+				}
+				d.bullets(e.Description, b, ink)
+				between()
+			}
+		},
+		"projects": func() {
+			if len(d.c.Projects) == 0 {
+				return
+			}
+			head(d.titles["projects"])
+			for _, p := range d.c.Projects {
+				d.row(d.segs(bold(p.Name)), right, join(" · ", p.Tech, p.Year), eb)
+				d.bullets(p.Description, b, ink)
+				between()
+			}
+		},
+		"certifications": func() {
+			if len(d.c.Certifications) == 0 {
+				return
+			}
+			head(d.titles["certifications"])
+			for _, ce := range d.c.Certifications {
+				d.row(d.segs(bold(ce.Name), muted(prefix(", ", ce.Issuer))), right, ce.Year, eb)
+			}
+		},
 	}
-	if len(d.c.Projects) > 0 {
-		head(d.titles["projects"])
-		for _, p := range d.c.Projects {
-			d.row(d.segs(bold(p.Name)), right, join(" · ", p.Tech, p.Year), b)
-			d.bullets(p.Description, b, cvInk)
-			pdf.Ln(0.8)
+	for _, key := range order {
+		if f := mainSections[key]; f != nil {
+			f()
+		} else if x, ok := extraAt(d.c, key); ok && len(nonEmpty(x.Items...)) > 0 {
+			head(x.Title)
+			d.bullets(x.Items, b, ink)
 		}
-	}
-	if len(d.c.Certifications) > 0 {
-		head(d.titles["certifications"])
-		for _, ce := range d.c.Certifications {
-			d.row(d.segs(bold(ce.Name), muted(prefix(", ", ce.Issuer))), right, ce.Year, b)
-		}
-	}
-	for _, x := range d.c.Extra {
-		if len(nonEmpty(x.Items...)) == 0 {
-			continue
-		}
-		head(x.Title)
-		d.bullets(x.Items, b, cvInk)
 	}
 }
 
@@ -719,103 +830,143 @@ func spaced(s string) string {
 
 func (d *cv) compact() {
 	pdf := d.pdf
-	const margin = 15.0
-	d.body = 10
-	pdf.SetMargins(margin, 12, margin)
-	pdf.SetAutoPageBreak(true, 12)
+	lk := d.lk
+	d.body = lk.base
+	pdf.SetMargins(lk.mx, lk.my, lk.mx)
+	pdf.SetAutoPageBreak(true, lk.my)
 	pdf.AddPage()
-	d.x, d.w = margin, 210-2*margin
-	b := d.body
+	d.x, d.w = lk.mx, 210-2*lk.mx
+	b, eb := d.body, lk.entry
+	ink := lk.ink(cvBlack)
+	rule := lk.col("rules", cvBlack)
+	align := "L"
+	if lk.center {
+		align = "C"
+	}
 
-	d.font(sans, "B", 17, cvBlack)
-	pdf.SetX(d.x)
-	pdf.MultiCell(d.w, d.lh(17), cleanText(spaced(strings.ToUpper(d.c.Contact.Name))), "", "C", false)
+	nameText := cleanText(d.c.Contact.Name)
+	if lk.upper {
+		nameText = cleanText(spaced(strings.ToUpper(d.c.Contact.Name)))
+	}
+	textX, tw := d.x, d.w
+	top := pdf.GetY()
+	pdf.SetXY(textX, top)
+	d.font(d.nameFamily(), "B", lk.name, lk.col("name", ink))
+	pdf.MultiCell(tw, d.lh(lk.name), nameText, "", align, false)
 	if d.c.Contact.Headline != "" {
-		d.font(sans, "", b, cvCompact)
-		pdf.SetX(d.x)
-		pdf.MultiCell(d.w, d.lh(b), cleanText(d.c.Contact.Headline), "", "C", false)
+		d.font(sans, "", lk.title, lk.col("title", lk.ink(cvCompact)))
+		pdf.SetX(textX)
+		pdf.MultiCell(tw, d.lh(lk.title), cleanText(d.c.Contact.Headline), "", align, false)
 	}
 	var contact []string
 	contact = append(contact, d.c.Contact.Email, d.c.Contact.Phone, d.c.Contact.Location)
 	for _, l := range d.c.Contact.Links {
 		contact = append(contact, shortLink(l))
 	}
-	if line := join(" · ", contact...); line != "" {
-		d.font(sans, "", b-0.5, cvCompact)
-		pdf.SetX(d.x)
-		pdf.MultiCell(d.w, d.lh(b-0.5), cleanText(line), "", "C", false)
+	if line := join(lk.separator(), contact...); line != "" {
+		d.font(sans, "", b-0.5, lk.ink(cvCompact))
+		pdf.SetX(textX)
+		pdf.MultiCell(tw, d.lh(b-0.5), cleanText(line), "", align, false)
 	}
-	if s := strings.TrimSpace(d.c.Summary); s != "" {
-		pdf.Ln(2)
-		d.font(sans, "", b, cvBlack)
-		d.para(s, b)
+	if pdf.GetY() < top {
+		pdf.SetY(top)
 	}
 	head := func(t string) {
 		pdf.Ln(2.6)
-		d.font(sans, "B", 11, cvBlack)
+		d.font(sans, "B", lk.head, lk.col("headings", cvBlack))
 		pdf.SetX(d.x)
-		pdf.CellFormat(d.w, d.lh(11)*0.9, cleanText(strings.ToUpper(t)), "", 1, "L", false, 0, "")
-		d.rule(cvBlack, 0.3)
+		pdf.CellFormat(d.w, d.lh(lk.head)*0.9, cleanText(lk.heading(t)), "", 1, "L", false, 0, "")
+		d.rule(rule, 0.3)
 		pdf.Ln(1)
 	}
-	bold := func(t string) seg { return seg{t, sans, "B", cvBlack} }
-	plain := func(t string) seg { return seg{t, sans, "", cvBlack} }
-	right := func() { d.font(sans, "", b, cvBlack) }
-	if len(d.c.Education) > 0 {
-		head(d.titles["education"])
-		for _, e := range d.c.Education {
-			d.row(d.segs(bold(join(" — ", e.School, e.Degree))), right, dates(e.Start, e.End), b)
-		}
-	}
-	if len(d.c.Experience) > 0 {
-		head(d.titles["experience"])
-		for _, e := range d.c.Experience {
-			d.row(d.segs(bold(join(" : ", e.Company, e.Title)), plain(prefix(", ", e.Location))), right, dates(e.Start, e.End), b)
-			d.bullets(e.Description, b, cvBlack)
-		}
-	}
-	if len(d.c.Projects) > 0 {
-		head(d.titles["projects"])
-		for _, p := range d.c.Projects {
-			d.row(d.segs(bold(p.Name), plain(prefix(" · ", p.Tech))), right, p.Year, b)
-			d.bullets(p.Description, b, cvBlack)
-		}
-	}
-	if len(d.c.SkillGroups) > 0 || len(nonEmpty(d.c.Skills...)) > 0 {
-		head(d.titles["skills"])
-		if len(d.c.SkillGroups) == 0 {
-			d.font(sans, "", b, cvBlack)
-			d.para(strings.Join(nonEmpty(d.c.Skills...), ", "), b)
-		}
-		for _, g := range d.c.SkillGroups {
-			d.row(d.segs(bold(prefix("", g.Label)+suffixIf(g.Label, " : ")), plain(strings.Join(nonEmpty(g.Items...), ", "))), right, "", b)
-		}
-	}
-	if len(d.c.Certifications) > 0 {
-		head(d.titles["certifications"])
-		for _, ce := range d.c.Certifications {
-			d.row(d.segs(bold(ce.Name), plain(prefix(", ", ce.Issuer))), right, ce.Year, b)
-		}
-	}
-	if len(d.c.Languages) > 0 {
-		head(d.titles["languages"])
-		var parts []string
-		for _, l := range d.c.Languages {
-			name, level := splitLanguage(l)
-			if level != "" {
-				name += " (" + level + ")"
+	bold := func(t string) seg { return seg{t, sans, "B", lk.col("entry_title", ink)} }
+	plain := func(t string) seg { return seg{t, sans, "", ink} }
+	right := func() { d.font(sans, "", eb, lk.col("dates", ink)) }
+	sections := map[string]func(){
+		"summary": func() {
+			if s := strings.TrimSpace(d.c.Summary); s != "" {
+				pdf.Ln(2)
+				d.font(sans, "", b, ink)
+				d.para(s, b)
 			}
-			parts = append(parts, name)
-		}
-		d.font(sans, "", b, cvBlack)
-		d.para(strings.Join(nonEmpty(parts...), " · "), b)
+		},
+		"education": func() {
+			if len(d.c.Education) == 0 {
+				return
+			}
+			head(d.titles["education"])
+			for _, e := range d.c.Education {
+				d.row(d.segs(bold(join(" — ", e.School, e.Degree))), right, dates(e.Start, e.End), eb)
+			}
+		},
+		"experience": func() {
+			if len(d.c.Experience) == 0 {
+				return
+			}
+			head(d.titles["experience"])
+			for _, e := range d.c.Experience {
+				d.row(d.segs(bold(join(" : ", e.Company, e.Title)), plain(prefix(", ", e.Location))), right, dates(e.Start, e.End), eb)
+				d.bullets(e.Description, b, ink)
+				pdf.Ln(lk.gapOr(0))
+			}
+		},
+		"projects": func() {
+			if len(d.c.Projects) == 0 {
+				return
+			}
+			head(d.titles["projects"])
+			for _, p := range d.c.Projects {
+				d.row(d.segs(bold(p.Name), plain(prefix(" · ", p.Tech))), right, p.Year, eb)
+				d.bullets(p.Description, b, ink)
+				pdf.Ln(lk.gapOr(0))
+			}
+		},
+		"skills": func() {
+			if len(d.c.SkillGroups) == 0 && len(nonEmpty(d.c.Skills...)) == 0 {
+				return
+			}
+			head(d.titles["skills"])
+			if len(d.c.SkillGroups) == 0 {
+				d.font(sans, "", b, ink)
+				d.para(strings.Join(nonEmpty(d.c.Skills...), ", "), b)
+			}
+			for _, g := range d.c.SkillGroups {
+				d.row(d.segs(bold(prefix("", g.Label)+suffixIf(g.Label, " : ")), plain(strings.Join(nonEmpty(g.Items...), ", "))), right, "", eb)
+			}
+		},
+		"certifications": func() {
+			if len(d.c.Certifications) == 0 {
+				return
+			}
+			head(d.titles["certifications"])
+			for _, ce := range d.c.Certifications {
+				d.row(d.segs(bold(ce.Name), plain(prefix(", ", ce.Issuer))), right, ce.Year, eb)
+			}
+		},
+		"languages": func() {
+			if len(d.c.Languages) == 0 {
+				return
+			}
+			head(d.titles["languages"])
+			var parts []string
+			for _, l := range d.c.Languages {
+				name, level := splitLanguage(l)
+				if level != "" {
+					name += " (" + level + ")"
+				}
+				parts = append(parts, name)
+			}
+			d.font(sans, "", b, ink)
+			d.para(strings.Join(nonEmpty(parts...), " · "), b)
+		},
 	}
-	for _, x := range d.c.Extra {
-		if len(nonEmpty(x.Items...)) == 0 {
-			continue
+	for _, key := range d.c.SectionOrder() {
+		if f := sections[key]; f != nil {
+			f()
+		} else if x, ok := extraAt(d.c, key); ok && len(nonEmpty(x.Items...)) > 0 {
+			head(x.Title)
+			d.bullets(x.Items, b, ink)
 		}
-		head(x.Title)
-		d.bullets(x.Items, b, cvBlack)
 	}
 }
 

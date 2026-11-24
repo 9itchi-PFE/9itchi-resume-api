@@ -35,6 +35,9 @@ type ResumeContent struct {
 	Projects       []Project       `json:"projects,omitempty" binding:"max=30,dive"`
 	SkillGroups    []SkillGroup    `json:"skill_groups,omitempty" binding:"max=10,dive"`
 	Extra          []ExtraSection  `json:"extra,omitempty" binding:"max=10,dive"`
+	// SectionOrderKeys is the order the user dragged the sections into; the contact block always stays on top.
+	SectionOrderKeys []string `json:"section_order,omitempty" binding:"max=20,dive,max=20"`
+	Style            *CVStyle `json:"style,omitempty"`
 }
 
 // AllSkills is the flat skill list followed by the grouped items not already in it.

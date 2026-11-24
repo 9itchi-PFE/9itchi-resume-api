@@ -309,9 +309,12 @@ func (d *docx) classic() string {
 	} else {
 		d.add(head.String())
 	}
+	o := newOrdered(&d.body)
+	o.begin()
 	if s := strings.TrimSpace(d.c.Summary); s != "" {
 		d.add(para(pp{before: 120, borderTop: hexBlue}, run(s, ink)))
 	}
+	o.cut("summary")
 	heading := func(t string) {
 		d.add(para(pp{before: 160, after: 60, borderBottom: hexBlue, keepNext: true}, run(t, rp{size: 13, color: hexBlue, caps: true})))
 	}
@@ -328,6 +331,7 @@ func (d *docx) classic() string {
 			}
 		}
 	}
+	o.cut("education")
 	if len(d.c.Experience) > 0 {
 		heading(d.titles["experience"])
 		for i, e := range d.c.Experience {
@@ -346,6 +350,7 @@ func (d *docx) classic() string {
 			d.bullets(e.Description, ink)
 		}
 	}
+	o.cut("experience")
 	if len(d.c.Projects) > 0 {
 		heading(d.titles["projects"])
 		for _, p := range d.c.Projects {
@@ -353,6 +358,7 @@ func (d *docx) classic() string {
 			d.bullets(p.Description, ink)
 		}
 	}
+	o.cut("projects")
 	if len(d.c.SkillGroups) > 0 || len(nonEmpty(d.c.Skills...)) > 0 {
 		heading(d.titles["skills"])
 		if len(d.c.SkillGroups) == 0 {
@@ -363,12 +369,14 @@ func (d *docx) classic() string {
 			d.add(para(pp{leftTab: col, indLeft: col, hanging: col}, run(g.Label, bold), tabRun, run(strings.Join(nonEmpty(g.Items...), ", "), ink)))
 		}
 	}
+	o.cut("skills")
 	if len(d.c.Certifications) > 0 {
 		heading(d.titles["certifications"])
 		for _, ce := range d.c.Certifications {
 			d.add(rowP(width, []string{run(ce.Name, bold), run(prefix(", ", ce.Issuer), ink)}, ce.Year, ink, pp{}))
 		}
 	}
+	o.cut("certifications")
 	if len(d.c.Languages) > 0 {
 		heading(d.titles["languages"])
 		for _, l := range d.c.Languages {
@@ -376,7 +384,9 @@ func (d *docx) classic() string {
 			d.add(rowP(width, []string{run(name, bold)}, level, ink, pp{}))
 		}
 	}
-	d.extra(heading, ink)
+	o.cut("languages")
+	d.extra(heading, ink, o)
+	o.replace(d.c.SectionOrder())
 	return sectPr(mm(12), mm(14), mm(12), mm(14))
 }
 
@@ -403,13 +413,13 @@ func (d *docx) bullets(lines []string, p rp) {
 	}
 }
 
-func (d *docx) extra(heading func(string), p rp) {
-	for _, x := range d.c.Extra {
-		if len(nonEmpty(x.Items...)) == 0 {
-			continue
+func (d *docx) extra(heading func(string), p rp, o *ordered) {
+	for i, x := range d.c.Extra {
+		if len(nonEmpty(x.Items...)) > 0 {
+			heading(x.Title)
+			d.bullets(x.Items, p)
 		}
-		heading(x.Title)
-		d.bullets(x.Items, p)
+		o.cut("extra:" + strconv.Itoa(i))
 	}
 }
 
@@ -445,6 +455,8 @@ func (d *docx) modern(branded bool) string {
 			sideLine(l, side)
 		}
 	}
+	os := newOrdered(&s)
+	os.begin()
 	if len(d.c.SkillGroups) > 0 || len(nonEmpty(d.c.Skills...)) > 0 {
 		sideHead(d.titles["skills"])
 		if len(d.c.SkillGroups) == 0 {
@@ -458,6 +470,7 @@ func (d *docx) modern(branded bool) string {
 			sideLine(strings.Join(nonEmpty(g.Items...), " · "), side)
 		}
 	}
+	os.cut("skills")
 	if len(d.c.Languages) > 0 {
 		sideHead(d.titles["languages"])
 		for _, l := range d.c.Languages {
@@ -465,6 +478,9 @@ func (d *docx) modern(branded bool) string {
 			sideLine(join(" · ", name, level), side)
 		}
 	}
+	os.cut("languages")
+	order := d.c.SectionOrder()
+	os.replace(order)
 	if s.Len() == 0 {
 		s.WriteString(para(pp{}))
 	}
@@ -477,9 +493,12 @@ func (d *docx) modern(branded bool) string {
 	if d.c.Contact.Headline != "" {
 		m.WriteString(para(pp{}, run(d.c.Contact.Headline, rp{size: b + 0.5, color: hexMuted})))
 	}
+	om := newOrdered(&m)
+	om.begin()
 	if sum := strings.TrimSpace(d.c.Summary); sum != "" {
 		m.WriteString(para(pp{before: 100}, run(sum, ink)))
 	}
+	om.cut("summary")
 	heading := func(t string) {
 		m.WriteString(para(pp{before: 180, after: 40, keepNext: true}, run(t, rp{size: 13, bold: true, color: hexNavy, font: "Cambria"})))
 	}
@@ -498,6 +517,7 @@ func (d *docx) modern(branded bool) string {
 			}
 		}
 	}
+	om.cut("education")
 	if len(d.c.Experience) > 0 {
 		heading(d.titles["experience"])
 		for _, e := range d.c.Experience {
@@ -508,6 +528,7 @@ func (d *docx) modern(branded bool) string {
 			bullets(e.Description)
 		}
 	}
+	om.cut("experience")
 	if len(d.c.Projects) > 0 {
 		heading(d.titles["projects"])
 		for _, p := range d.c.Projects {
@@ -515,19 +536,22 @@ func (d *docx) modern(branded bool) string {
 			bullets(p.Description)
 		}
 	}
+	om.cut("projects")
 	if len(d.c.Certifications) > 0 {
 		heading(d.titles["certifications"])
 		for _, ce := range d.c.Certifications {
 			row([]string{run(ce.Name, bold), run(prefix(", ", ce.Issuer), muted)}, ce.Year, pp{})
 		}
 	}
-	for _, x := range d.c.Extra {
-		if len(nonEmpty(x.Items...)) == 0 {
-			continue
+	om.cut("certifications")
+	for i, x := range d.c.Extra {
+		if len(nonEmpty(x.Items...)) > 0 {
+			heading(x.Title)
+			bullets(x.Items)
 		}
-		heading(x.Title)
-		bullets(x.Items)
+		om.cut("extra:" + strconv.Itoa(i))
 	}
+	om.replace(order)
 
 	// One full-height row: the dark side cell and the main cell.
 	rowH := pageH - 60
@@ -570,9 +594,12 @@ func (d *docx) compact() string {
 	if len(contact) > 0 {
 		d.add(para(pp{align: "center"}, run(strings.Join(contact, " · "), rp{size: b - 0.5, color: hexDim})))
 	}
+	o := newOrdered(&d.body)
+	o.begin()
 	if s := strings.TrimSpace(d.c.Summary); s != "" {
 		d.add(para(pp{before: 100}, run(s, ink)))
 	}
+	o.cut("summary")
 	heading := func(t string) {
 		d.add(para(pp{before: 150, after: 60, borderBottom: hexBlack, borderSz: 6, keepNext: true}, run(t, rp{size: 11, bold: true, caps: true, color: hexBlack})))
 	}
@@ -582,6 +609,7 @@ func (d *docx) compact() string {
 			d.add(rowP(width, []string{run(join(" — ", e.School, e.Degree), bold)}, dates(e.Start, e.End), ink, pp{}))
 		}
 	}
+	o.cut("education")
 	if len(d.c.Experience) > 0 {
 		heading(d.titles["experience"])
 		for _, e := range d.c.Experience {
@@ -589,6 +617,7 @@ func (d *docx) compact() string {
 			d.bullets(e.Description, ink)
 		}
 	}
+	o.cut("experience")
 	if len(d.c.Projects) > 0 {
 		heading(d.titles["projects"])
 		for _, p := range d.c.Projects {
@@ -596,6 +625,7 @@ func (d *docx) compact() string {
 			d.bullets(p.Description, ink)
 		}
 	}
+	o.cut("projects")
 	if len(d.c.SkillGroups) > 0 || len(nonEmpty(d.c.Skills...)) > 0 {
 		heading(d.titles["skills"])
 		if len(d.c.SkillGroups) == 0 {
@@ -605,12 +635,14 @@ func (d *docx) compact() string {
 			d.add(para(pp{}, run(g.Label+suffixIf(g.Label, " : "), bold), run(strings.Join(nonEmpty(g.Items...), ", "), ink)))
 		}
 	}
+	o.cut("skills")
 	if len(d.c.Certifications) > 0 {
 		heading(d.titles["certifications"])
 		for _, ce := range d.c.Certifications {
 			d.add(rowP(width, []string{run(ce.Name, bold), run(prefix(", ", ce.Issuer), ink)}, ce.Year, ink, pp{}))
 		}
 	}
+	o.cut("certifications")
 	if len(d.c.Languages) > 0 {
 		heading(d.titles["languages"])
 		var parts []string
@@ -623,7 +655,9 @@ func (d *docx) compact() string {
 		}
 		d.add(para(pp{}, run(strings.Join(nonEmpty(parts...), " · "), ink)))
 	}
-	d.extra(heading, ink)
+	o.cut("languages")
+	d.extra(heading, ink, o)
+	o.replace(d.c.SectionOrder())
 	return sectPr(mm(12), mm(15), mm(12), mm(15))
 }
 
