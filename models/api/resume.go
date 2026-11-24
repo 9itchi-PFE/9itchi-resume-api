@@ -15,16 +15,24 @@ const (
 //	 "summary":"...",
 //	 "experience":[{"company","title","start","end","description":["bullet"]}],
 //	 "education":[{"school","degree","start","end"}],
-//	 "skills":["Go"], "languages":["English"]}
+//	 "skills":["Go"], "languages":["English"],
+//	 "certifications":[{"name","issuer","year"}]}
 //
 // Dates (start/end) are free text such as "2021-03" or "Present". The whole document is capped at MaxContentBytes.
 type ResumeContent struct {
-	Contact    Contact      `json:"contact"`
-	Summary    string       `json:"summary" binding:"max=5000"`
-	Experience []Experience `json:"experience" binding:"max=50,dive"`
-	Education  []Education  `json:"education" binding:"max=30,dive"`
-	Skills     []string     `json:"skills" binding:"max=100,dive,max=100"`
-	Languages  []string     `json:"languages" binding:"max=30,dive,max=100"`
+	Contact        Contact         `json:"contact"`
+	Summary        string          `json:"summary" binding:"max=5000"`
+	Experience     []Experience    `json:"experience" binding:"max=50,dive"`
+	Education      []Education     `json:"education" binding:"max=30,dive"`
+	Skills         []string        `json:"skills" binding:"max=100,dive,max=100"`
+	Languages      []string        `json:"languages" binding:"max=30,dive,max=100"`
+	Certifications []Certification `json:"certifications" binding:"max=30,dive"`
+}
+
+type Certification struct {
+	Name   string `json:"name" binding:"max=200"`
+	Issuer string `json:"issuer" binding:"max=200"`
+	Year   string `json:"year" binding:"max=30"`
 }
 
 type Contact struct {
@@ -71,13 +79,16 @@ type ExportResumeRequest struct {
 }
 
 type ResumeResponse struct {
-	ID         string        `json:"id"`
-	Title      string        `json:"title"`
-	TemplateID *string       `json:"template_id"`
-	Version    int           `json:"version"`
-	Content    ResumeContent `json:"content"`
-	CreatedAt  time.Time     `json:"created_at"`
-	UpdatedAt  time.Time     `json:"updated_at"`
+	ID         string  `json:"id"`
+	Title      string  `json:"title"`
+	TemplateID *string `json:"template_id"`
+	Version    int     `json:"version"`
+	// ParseStatus is none|pending|done|failed while an uploaded CV is read; poll GET /resumes/:id until it leaves pending.
+	ParseStatus string        `json:"parse_status"`
+	Language    *string       `json:"language"`
+	Content     ResumeContent `json:"content"`
+	CreatedAt   time.Time     `json:"created_at"`
+	UpdatedAt   time.Time     `json:"updated_at"`
 }
 
 // ResumeListItem is a resume without content.

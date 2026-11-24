@@ -64,7 +64,22 @@ type resumeService struct {
 	files     repositories.FileRepository
 	tx        repositories.Transactor
 	exporters map[string]core.Exporter
+	// parser reads uploaded CVs (ai-api); nil leaves uploads empty with parse_status none.
+	parser core.ResumeParser
+	// quotas enforces the plan limits (payments-api); nil means no limits (tests, local runs without payments).
+	quotas core.QuotaSource
+	// async runs background work; tests replace it to run synchronously.
+	async func(func())
 }
+
+// Option configures the resume service.
+type Option func(*resumeService)
+
+// WithParser enables AI reading of uploaded CVs.
+func WithParser(p core.ResumeParser) Option { return func(s *resumeService) { s.parser = p } }
+
+// WithQuotas enables plan limits (1 CV and 1 branded download on the free plan).
+func WithQuotas(q core.QuotaSource) Option { return func(s *resumeService) { s.quotas = q } }
 
 func NewResumeService(
 	repo repositories.ResumeRepository,
@@ -72,8 +87,14 @@ func NewResumeService(
 	files repositories.FileRepository,
 	tx repositories.Transactor,
 	exporters map[string]core.Exporter,
+	opts ...Option,
 ) ResumeService {
-	return &resumeService{repo: repo, templates: templates, files: files, tx: tx, exporters: exporters}
+	s := &resumeService{repo: repo, templates: templates, files: files, tx: tx, exporters: exporters,
+		async: func(f func()) { go f() }}
+	for _, o := range opts {
+		o(s)
+	}
+	return s
 }
 
 // encodeContent validates and serialises content for the jsonb column.
@@ -138,6 +159,9 @@ func (s *resumeService) UploadResume(ctx context.Context, userID string, filenam
 	if apiErr != nil {
 		return nil, apiErr
 	}
+	if _, apiErr := s.checkResumeQuota(ctx, userID); apiErr != nil {
+		return nil, apiErr
+	}
 	// Read at most limit+1 bytes: the declared size cannot be trusted.
 	data, err := io.ReadAll(io.LimitReader(r, api.MaxUploadBytes+1))
 	if err != nil {
@@ -188,8 +212,15 @@ func (s *resumeService) UploadResume(ctx context.Context, userID string, filenam
 	if err != nil {
 		return nil, repoError(err, "resume not found")
 	}
-	// AI SEAM: once ai-api parsing is wired, trigger it here after the transaction commits
-	// (async, using resume.ID and the stored original) and fill resumes.content from the result.
+	if s.parser != nil {
+		if err := s.repo.SetParseStatus(ctx, resume.ID, db.ParsePending); err != nil {
+			utils.Logger.Error("upload: mark pending", zap.Error(err))
+		} else {
+			resume.ParseStatus = db.ParsePending
+			id := resume.ID
+			s.async(func() { s.readUpload(id, format, data) })
+		}
+	}
 	return &api.UploadResumeResponse{
 		Resume: mapping.ResumeToResponse(resume),
 		File:   mapping.FileMetaToResponse(meta),
@@ -219,6 +250,9 @@ func hasMagic(format string, data []byte) bool {
 }
 
 func (s *resumeService) CreateResume(ctx context.Context, userID string, req api.CreateResumeRequest) (*api.ResumeResponse, *models.ApiError) {
+	if _, apiErr := s.checkResumeQuota(ctx, userID); apiErr != nil {
+		return nil, apiErr
+	}
 	if apiErr := validateTitle(req.Title); apiErr != nil {
 		return nil, apiErr
 	}
@@ -364,13 +398,22 @@ func (s *resumeService) ExportResume(ctx context.Context, userID string, id stri
 	if err != nil {
 		return nil, repoError(err, "resume not found")
 	}
+	branded, apiErr := s.checkDownloadQuota(ctx, userID)
+	if apiErr != nil {
+		return nil, apiErr
+	}
 	layout := ""
 	if res.TemplateID != nil {
 		if t, err := s.templates.Get(ctx, *res.TemplateID); err == nil {
 			layout = t.Layout
 		}
 	}
-	data, err := exporter.Render(ctx, mapping.ParseContent(res.Content), layout)
+	content := mapping.ParseContent(res.Content)
+	lang := "fr"
+	if res.Language != nil && *res.Language == "en" {
+		lang = "en"
+	}
+	data, err := exporter.Render(ctx, content, layout, core.RenderOptions{Language: lang, Branded: branded})
 	if err != nil {
 		utils.Logger.Error("export render failed", zap.Error(err))
 		return nil, newError(http.StatusInternalServerError, "export failed")
@@ -380,7 +423,7 @@ func (s *resumeService) ExportResume(ctx context.Context, userID string, id stri
 		ResumeID:    res.ID,
 		Kind:        "export",
 		Format:      format,
-		Filename:    sanitizeFilename(res.Title) + "." + format,
+		Filename:    exportFilename(content.Contact.Name, res.Title) + "." + format,
 		ContentType: contentTypePDF,
 		SizeBytes:   int64(len(data)),
 		SHA256:      hex.EncodeToString(sum[:]),

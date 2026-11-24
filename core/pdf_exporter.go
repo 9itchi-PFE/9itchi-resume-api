@@ -49,7 +49,16 @@ func pdfText(s string) string {
 	return b.String()
 }
 
-func (pdfExporter) Render(ctx context.Context, c api.ResumeContent, layout string) ([]byte, error) {
+// headings are the section titles per language.
+var headings = map[string]map[string]string{
+	"fr": {"summary": "Profil", "experience": "Expérience", "education": "Formation", "skills": "Compétences", "languages": "Langues", "certifications": "Certifications"},
+	"en": {"summary": "Summary", "experience": "Experience", "education": "Education", "skills": "Skills", "languages": "Languages", "certifications": "Certifications"},
+}
+
+// BrandMark is the footer printed on free-plan downloads.
+const BrandMark = "CV créé avec 9itchi · 9itchi-pfe.com"
+
+func (pdfExporter) Render(ctx context.Context, c api.ResumeContent, layout string, opts RenderOptions) ([]byte, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -61,6 +70,19 @@ func (pdfExporter) Render(ctx context.Context, c api.ResumeContent, layout strin
 	pdf.SetMargins(st.margin, st.margin, st.margin)
 	pdf.SetAutoPageBreak(true, st.margin)
 	pdf.SetTitle(pdfText(c.Contact.Name), false)
+	titles, ok := headings[opts.Language]
+	if !ok {
+		titles = headings["fr"]
+	}
+	if opts.Branded {
+		pdf.SetFooterFunc(func() {
+			pdf.SetY(-st.margin + 2)
+			pdf.SetFont(st.family, "I", 7.5)
+			pdf.SetTextColor(110, 110, 110)
+			pdf.CellFormat(0, 4, pdfText(BrandMark), "", 0, "C", false, 0, "https://9itchi-pfe.com")
+			pdf.SetTextColor(0, 0, 0)
+		})
+	}
 	pdf.AddPage()
 
 	w := 0.0 // full width
@@ -96,11 +118,11 @@ func (pdfExporter) Render(ctx context.Context, c api.ResumeContent, layout strin
 	pdf.SetFont(st.family, "", st.body)
 
 	if strings.TrimSpace(c.Summary) != "" {
-		heading("Summary")
+		heading(titles["summary"])
 		line("", st.body, c.Summary)
 	}
 	if len(c.Experience) > 0 {
-		heading("Experience")
+		heading(titles["experience"])
 		for _, e := range c.Experience {
 			line("B", st.body, join(" - ", e.Title, e.Company))
 			line("I", st.body-0.5, join(" - ", e.Start, e.End))
@@ -111,7 +133,7 @@ func (pdfExporter) Render(ctx context.Context, c api.ResumeContent, layout strin
 		}
 	}
 	if len(c.Education) > 0 {
-		heading("Education")
+		heading(titles["education"])
 		for _, e := range c.Education {
 			line("B", st.body, join(" - ", e.Degree, e.School))
 			line("I", st.body-0.5, join(" - ", e.Start, e.End))
@@ -119,12 +141,18 @@ func (pdfExporter) Render(ctx context.Context, c api.ResumeContent, layout strin
 		}
 	}
 	if len(c.Skills) > 0 {
-		heading("Skills")
+		heading(titles["skills"])
 		line("", st.body, strings.Join(c.Skills, ", "))
 	}
 	if len(c.Languages) > 0 {
-		heading("Languages")
+		heading(titles["languages"])
 		line("", st.body, strings.Join(c.Languages, ", "))
+	}
+	if len(c.Certifications) > 0 {
+		heading(titles["certifications"])
+		for _, ce := range c.Certifications {
+			line("", st.body, join(", ", ce.Name, ce.Issuer, ce.Year))
+		}
 	}
 
 	var buf bytes.Buffer

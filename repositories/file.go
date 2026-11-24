@@ -21,6 +21,8 @@ type FileRepository interface {
 	Delete(ctx context.Context, resumeID, fileID string) error
 	// LatestExport returns the newest kind=export file of the given format, including its blob.
 	LatestExport(ctx context.Context, resumeID, format string) (*db.ResumeFile, error)
+	// CountExportsByUser counts every exported file of the user's resumes (free download quota).
+	CountExportsByUser(ctx context.Context, userID string) (int, error)
 }
 
 type fileRepository struct {
@@ -97,4 +99,14 @@ func (r *fileRepository) LatestExport(ctx context.Context, resumeID, format stri
 	}
 	f, err := pgx.CollectOneRow(rows, pgx.RowToAddrOfStructByName[db.ResumeFile])
 	return f, MapError(err)
+}
+
+func (r *fileRepository) CountExportsByUser(ctx context.Context, userID string) (int, error) {
+	ctx, cancel := QueryTimeout(ctx)
+	defer cancel()
+	var n int
+	err := r.store.Conn(ctx).QueryRow(ctx,
+		`SELECT count(*) FROM resume_files f JOIN resumes r ON r.id = f.resume_id
+		 WHERE r.user_id = $1 AND f.kind = 'export'`, userID).Scan(&n)
+	return n, MapError(err)
 }

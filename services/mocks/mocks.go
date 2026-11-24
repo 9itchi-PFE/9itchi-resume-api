@@ -20,15 +20,39 @@ func (t Tx) WithTx(ctx context.Context, fn func(ctx context.Context) error) erro
 }
 
 type ResumeRepo struct {
-	CreateFn        func(ctx context.Context, userID, title string, templateID *string, content []byte) (*db.Resume, error)
-	GetFn           func(ctx context.Context, userID, id string) (*db.Resume, error)
-	ExistsFn        func(ctx context.Context, userID, id string) error
-	ListFn          func(ctx context.Context, userID string, limit, offset int) ([]db.ResumeSummary, int, error)
-	UpdateFn        func(ctx context.Context, userID, id string, title, templateID *string, content []byte) (*db.Resume, error)
-	DeleteFn        func(ctx context.Context, userID, id string) error
-	BumpVersionFn   func(ctx context.Context, userID, id string) (int, []byte, error)
-	InsertVersionFn func(ctx context.Context, resumeID string, versionNo int, content []byte) (*db.ResumeVersionMeta, error)
-	ListVersionsFn  func(ctx context.Context, resumeID string) ([]db.ResumeVersionMeta, error)
+	CreateFn         func(ctx context.Context, userID, title string, templateID *string, content []byte) (*db.Resume, error)
+	GetFn            func(ctx context.Context, userID, id string) (*db.Resume, error)
+	ExistsFn         func(ctx context.Context, userID, id string) error
+	ListFn           func(ctx context.Context, userID string, limit, offset int) ([]db.ResumeSummary, int, error)
+	UpdateFn         func(ctx context.Context, userID, id string, title, templateID *string, content []byte) (*db.Resume, error)
+	DeleteFn         func(ctx context.Context, userID, id string) error
+	BumpVersionFn    func(ctx context.Context, userID, id string) (int, []byte, error)
+	InsertVersionFn  func(ctx context.Context, resumeID string, versionNo int, content []byte) (*db.ResumeVersionMeta, error)
+	ListVersionsFn   func(ctx context.Context, resumeID string) ([]db.ResumeVersionMeta, error)
+	CountByUserFn    func(ctx context.Context, userID string) (int, error)
+	SetParseStatusFn func(ctx context.Context, id, status string) error
+	ApplyParsedFn    func(ctx context.Context, id string, content []byte, language string) (bool, error)
+}
+
+func (m *ResumeRepo) CountByUser(ctx context.Context, userID string) (int, error) {
+	if m.CountByUserFn == nil {
+		return 0, nil
+	}
+	return m.CountByUserFn(ctx, userID)
+}
+
+func (m *ResumeRepo) SetParseStatus(ctx context.Context, id, status string) error {
+	if m.SetParseStatusFn == nil {
+		return nil
+	}
+	return m.SetParseStatusFn(ctx, id, status)
+}
+
+func (m *ResumeRepo) ApplyParsed(ctx context.Context, id string, content []byte, language string) (bool, error) {
+	if m.ApplyParsedFn == nil {
+		return true, nil
+	}
+	return m.ApplyParsedFn(ctx, id, content, language)
 }
 
 var _ repositories.ResumeRepository = (*ResumeRepo)(nil)
@@ -134,11 +158,19 @@ func (m *TemplateRepo) Update(ctx context.Context, id string, patch repositories
 }
 
 type FileRepo struct {
-	CreateFn       func(ctx context.Context, f *db.ResumeFile) (*db.ResumeFileMeta, error)
-	ListByResumeFn func(ctx context.Context, resumeID string) ([]db.ResumeFileMeta, error)
-	GetFn          func(ctx context.Context, resumeID, fileID string) (*db.ResumeFile, error)
-	DeleteFn       func(ctx context.Context, resumeID, fileID string) error
-	LatestExportFn func(ctx context.Context, resumeID, format string) (*db.ResumeFile, error)
+	CreateFn             func(ctx context.Context, f *db.ResumeFile) (*db.ResumeFileMeta, error)
+	ListByResumeFn       func(ctx context.Context, resumeID string) ([]db.ResumeFileMeta, error)
+	GetFn                func(ctx context.Context, resumeID, fileID string) (*db.ResumeFile, error)
+	DeleteFn             func(ctx context.Context, resumeID, fileID string) error
+	LatestExportFn       func(ctx context.Context, resumeID, format string) (*db.ResumeFile, error)
+	CountExportsByUserFn func(ctx context.Context, userID string) (int, error)
+}
+
+func (m *FileRepo) CountExportsByUser(ctx context.Context, userID string) (int, error) {
+	if m.CountExportsByUserFn == nil {
+		return 0, nil
+	}
+	return m.CountExportsByUserFn(ctx, userID)
 }
 
 var _ repositories.FileRepository = (*FileRepo)(nil)

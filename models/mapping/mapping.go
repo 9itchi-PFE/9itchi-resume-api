@@ -29,6 +29,9 @@ func NormalizeContent(c api.ResumeContent) api.ResumeContent {
 	if c.Languages == nil {
 		c.Languages = []string{}
 	}
+	if c.Certifications == nil {
+		c.Certifications = []api.Certification{}
+	}
 	return c
 }
 
@@ -43,13 +46,15 @@ func ParseContent(raw []byte) api.ResumeContent {
 
 func ResumeToResponse(r *db.Resume) api.ResumeResponse {
 	return api.ResumeResponse{
-		ID:         r.ID,
-		Title:      r.Title,
-		TemplateID: r.TemplateID,
-		Version:    r.Version,
-		Content:    ParseContent(r.Content),
-		CreatedAt:  r.CreatedAt,
-		UpdatedAt:  r.UpdatedAt,
+		ID:          r.ID,
+		Title:       r.Title,
+		TemplateID:  r.TemplateID,
+		Version:     r.Version,
+		ParseStatus: r.ParseStatus,
+		Language:    r.Language,
+		Content:     ParseContent(r.Content),
+		CreatedAt:   r.CreatedAt,
+		UpdatedAt:   r.UpdatedAt,
 	}
 }
 
