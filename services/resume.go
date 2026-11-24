@@ -430,7 +430,7 @@ func (s *resumeService) ExportResume(ctx context.Context, userID string, id stri
 	if format == "docx" && branded {
 		return nil, newError(http.StatusPaymentRequired, errWordForSubscribers)
 	}
-	data, content, apiErr := s.render(ctx, res, exporter)
+	data, content, apiErr := s.render(ctx, res, exporter, branded)
 	if apiErr != nil {
 		return nil, apiErr
 	}
@@ -496,8 +496,9 @@ func (s *resumeService) ATSCheck(ctx context.Context, userID string, id string, 
 	return &out, nil
 }
 
-// render draws the resume as it is now (template, language, photo) with the given exporter.
-func (s *resumeService) render(ctx context.Context, res *db.Resume, exporter core.Exporter) ([]byte, api.ResumeContent, *models.ApiError) {
+// render draws the resume as it is now (template, language, photo) with the given exporter. branded adds the
+// "CV créé avec 9itchi" mark of the free download.
+func (s *resumeService) render(ctx context.Context, res *db.Resume, exporter core.Exporter, branded bool) ([]byte, api.ResumeContent, *models.ApiError) {
 	layout := ""
 	if res.TemplateID != nil {
 		if t, err := s.templates.Get(ctx, *res.TemplateID); err == nil {
@@ -509,7 +510,7 @@ func (s *resumeService) render(ctx context.Context, res *db.Resume, exporter cor
 	if res.Language != nil && *res.Language == "en" {
 		lang = "en"
 	}
-	opts := core.RenderOptions{Language: lang}
+	opts := core.RenderOptions{Language: lang, Branded: branded}
 	if layout != "compact" {
 		if p, err := s.files.LatestPhoto(ctx, res.ID); err == nil {
 			opts.Photo, opts.PhotoFormat = p.Data, p.Format
@@ -538,7 +539,8 @@ func (s *resumeService) InternalResumePDF(ctx context.Context, id string) (*api.
 	if res == nil {
 		return nil, newError(http.StatusNotFound, "resume not found")
 	}
-	data, content, apiErr := s.render(ctx, res, s.exporters["pdf"])
+	// Never branded: 9itchi only sends applications for subscribers.
+	data, content, apiErr := s.render(ctx, res, s.exporters["pdf"], false)
 	if apiErr != nil {
 		return nil, apiErr
 	}
