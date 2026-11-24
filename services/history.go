@@ -167,3 +167,11 @@ func (s *resumeService) response(ctx context.Context, res *db.Resume) *api.Resum
 	}
 	return &resp
 }
+
+func (s *resumeService) Downloads(ctx context.Context, userID string) (*api.DownloadsResponse, *models.ApiError) {
+	n, err := s.files.CountExportsByUser(ctx, userID)
+	if err != nil {
+		return nil, repoError(err, "not found")
+	}
+	return &api.DownloadsResponse{Used: n}, nil
+}

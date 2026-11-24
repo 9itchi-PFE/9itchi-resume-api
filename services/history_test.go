@@ -157,3 +157,15 @@ func TestGetResumeSaysWhetherThereIsAPhoto(t *testing.T) {
 	require.Nil(t, apiErr)
 	assert.True(t, res.HasPhoto)
 }
+
+func TestDownloads(t *testing.T) {
+	f := newFixture()
+	f.files.CountExportsByUserFn = func(context.Context, string) (int, error) { return 2, nil }
+	d, apiErr := f.svc.Downloads(context.Background(), uid)
+	require.Nil(t, apiErr)
+	assert.Equal(t, 2, d.Used)
+	f.files.CountExportsByUserFn = func(context.Context, string) (int, error) { return 0, assert.AnError }
+	_, apiErr = f.svc.Downloads(context.Background(), uid)
+	require.NotNil(t, apiErr)
+	assert.Equal(t, http.StatusInternalServerError, apiErr.Code)
+}

@@ -229,6 +229,11 @@ type VersionContentResponse struct {
 	Content ResumeContent `json:"content"`
 }
 
+// DownloadsResponse says how many CVs the user downloaded, so the client opens the right dialog.
+type DownloadsResponse struct {
+	Used int `json:"used"`
+}
+
 // DuplicateResumeRequest is the body of POST /resumes/:id/duplicate.
 type DuplicateResumeRequest struct {
 	Title string `json:"title" binding:"required,max=200"`

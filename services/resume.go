@@ -66,6 +66,8 @@ type ResumeService interface {
 	GetPhoto(ctx context.Context, userID, id string) (*api.FileContent, *models.ApiError)
 	// DELETE /resumes/:id/photo
 	DeletePhoto(ctx context.Context, userID, id string) *models.ApiError
+	// GET /me/downloads: how many CV downloads the user made (the free plan allows one)
+	Downloads(ctx context.Context, userID string) (*api.DownloadsResponse, *models.ApiError)
 	// GET /internal/resumes/:id/pdf: latest exported PDF bytes (email attachments), no user scoping
 	InternalResumePDF(ctx context.Context, id string) (*api.FileContent, *models.ApiError)
 }

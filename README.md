@@ -25,6 +25,7 @@ Port `8082`, health `/health`. All endpoints are implemented.
 | POST | `/resumes/:id/export` | user | ExportResume |
 | POST | `/resumes/:id/ats-check` | user | ATSCheck (the 24 CV rules) |
 | GET | `/internal/resumes/:id/pdf` | internal | InternalResumePDF |
+| GET | `/me/downloads` | user | Downloads (`{"used"}`) |
 | GET | `/templates` | user | ListTemplates |
 | GET | `/templates/:id` | user | GetTemplate |
 | POST | `/admin/templates` | admin | CreateTemplate |

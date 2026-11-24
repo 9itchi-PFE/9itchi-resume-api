@@ -288,3 +288,15 @@ func DeletePhoto(svc services.ResumeService) gin.HandlerFunc {
 		c.Status(http.StatusNoContent)
 	}
 }
+
+// Downloads: GET /me/downloads (user) how many CV downloads were made.
+func Downloads(svc services.ResumeService) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		result, apiErr := svc.Downloads(c.Request.Context(), c.GetString("user_id"))
+		if apiErr != nil {
+			models.FormatError(c, apiErr)
+			return
+		}
+		c.JSON(http.StatusOK, result)
+	}
+}

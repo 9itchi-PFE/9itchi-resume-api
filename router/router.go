@@ -42,6 +42,7 @@ func initializeRoutes(r *gin.Engine, services *services.Services) {
 		userGroup.DELETE("/resumes/:id/photo", handlers.DeletePhoto(services.Resume))
 		userGroup.POST("/resumes/:id/export", handlers.ExportResume(services.Resume))
 		userGroup.POST("/resumes/:id/ats-check", handlers.ATSCheck(services.Resume))
+		userGroup.GET("/me/downloads", handlers.Downloads(services.Resume))
 		userGroup.GET("/templates", handlers.ListTemplates(services.Template))
 		userGroup.GET("/templates/:id", handlers.GetTemplate(services.Template))
 		userGroup.GET("/resumes/:id/files", handlers.ListFiles(services.File))
