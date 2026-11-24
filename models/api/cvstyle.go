@@ -25,6 +25,7 @@ type CVStyle struct {
 	LocationPos   string `json:"location_position,omitempty" binding:"omitempty,oneof=line date"`
 	MetaOrder     string `json:"meta_order,omitempty" binding:"omitempty,oneof=date_first location_first"`
 	HeaderLayout  string `json:"header_layout,omitempty" binding:"omitempty,oneof=stacked inline"`
+	HeaderValign  string `json:"header_valign,omitempty" binding:"omitempty,oneof=top middle bottom"`
 	PhotoPos      string `json:"photo_position,omitempty" binding:"omitempty,oneof=left right"`
 	ListStyle     string `json:"list_style,omitempty" binding:"omitempty,oneof=bullet hyphen"`
 	IndentBody    *bool  `json:"indent_body,omitempty"`

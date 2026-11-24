@@ -453,7 +453,7 @@ func (d *cv) classic(opts RenderOptions) {
 	if lk.center {
 		align = "C"
 	}
-	pdf.SetXY(textX, top)
+	pdf.SetXY(textX, d.textTop(top, 26, textX != d.x || tw != d.w, tw))
 	d.font(d.nameFamily(), "B", lk.name, lk.col("name", lk.ink(rgb{17, 17, 17})))
 	inline := lk.inlineHeader() && d.c.Contact.Headline != ""
 	if inline {
@@ -919,7 +919,7 @@ func (d *cv) compact(opts RenderOptions) {
 	if cx := photoCenter(d, 11); d.photo(opts, cx, top+11, 11, nil) {
 		textX, tw = textAfterPhoto(d, 11)
 	}
-	pdf.SetXY(textX, top)
+	pdf.SetXY(textX, d.textTop(top, 22, textX != d.x || tw != d.w, tw))
 	d.font(d.nameFamily(), "B", lk.name, lk.col("name", ink))
 	pdf.MultiCell(tw, d.lh(lk.name), nameText, "", align, false)
 	if d.c.Contact.Headline != "" {
@@ -1061,4 +1061,32 @@ func textAfterPhoto(d *cv, r float64) (x, w float64) {
 		return d.x, d.w - 2*r - 6
 	}
 	return d.x + 2*r + 6, d.w - 2*r - 6
+}
+
+// textTop is where the header text starts: the photo is 'height' mm tall, and the text block (estimated) sits at its top, middle or bottom.
+func (d *cv) textTop(top, height float64, hasPhoto bool, tw float64) float64 {
+	if !hasPhoto || d.lk.headerValign == "" || d.lk.headerValign == "top" {
+		return top
+	}
+	lk := d.lk
+	h := d.lh(lk.name)
+	if d.c.Contact.Headline != "" && !(lk.inlineHeader() && lk.layoutIsClassic) {
+		h += d.lh(lk.title)
+	}
+	parts := nonEmpty(d.c.Contact.Email, d.c.Contact.Phone, d.c.Contact.Location)
+	for _, l := range nonEmpty(d.c.Contact.Links...) {
+		parts = append(parts, shortLink(l))
+	}
+	if len(parts) > 0 {
+		d.font(sans, "", lk.base-1, rgb{0, 0, 0})
+		h += float64(len(d.pdf.SplitLines([]byte(cleanText(join(lk.separator(), parts...))), tw))) * d.lh(lk.base-1)
+	}
+	free := height - h
+	if free <= 0 {
+		return top
+	}
+	if lk.headerValign == "bottom" {
+		return top + free
+	}
+	return top + free/2
 }
