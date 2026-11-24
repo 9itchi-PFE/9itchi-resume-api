@@ -22,19 +22,20 @@ func visibleEntriesMark(c api.ResumeContent, mark bool) api.ResumeContent {
 	c.Summary = plain(c.Summary)
 	beside := c.Style != nil && c.Style.LocationPos == "date"
 	order := c.Style != nil && c.Style.MetaOrder == "location_first"
+	sep := metaSep(c.Style)
 	for i := range c.Experience {
 		e := &c.Experience[i]
 		e.Description = plainAll(e.Description)
 		e.Title, e.Company, e.Kind, e.Location = plain(e.Title), plain(e.Company), plain(e.Kind), plain(e.Location)
 		if beside && strings.TrimSpace(e.Location) != "" {
-			e.Start, e.End, e.Location = metaText(e.Start, e.End, e.Location, order, mark), "", ""
+			e.Start, e.End, e.Location = metaText(e.Start, e.End, e.Location, order, mark, sep), "", ""
 		}
 	}
 	for i := range c.Education {
 		e := &c.Education[i]
 		e.School, e.Degree, e.Location = plain(e.School), plain(e.Degree), plain(e.Location)
 		if beside && strings.TrimSpace(e.Location) != "" {
-			e.Start, e.End, e.Location = metaText(e.Start, e.End, e.Location, order, mark), "", ""
+			e.Start, e.End, e.Location = metaText(e.Start, e.End, e.Location, order, mark, sep), "", ""
 		}
 	}
 	for i := range c.Projects {
@@ -45,7 +46,7 @@ func visibleEntriesMark(c api.ResumeContent, mark bool) api.ResumeContent {
 		if beside {
 			loc = strings.TrimSpace(p.Location)
 		}
-		if r := metaText(p.Start, p.End, loc, order, mark); r != "" {
+		if r := metaText(p.Start, p.End, loc, order, mark, sep); r != "" {
 			p.Year = r
 		}
 	}
@@ -56,7 +57,20 @@ func visibleEntriesMark(c api.ResumeContent, mark bool) api.ResumeContent {
 }
 
 // metaText is the right-hand text of an entry: its dates and, when given, the location beside them; mirrors the client's metaText.
-func metaText(start, end, loc string, locationFirst, mark bool) string {
+// metaSep is what the style puts between the dates and the location: a bullet by default, a hyphen or a bar.
+func metaSep(s *api.CVStyle) string {
+	if s != nil {
+		switch s.MetaSep {
+		case "hyphen":
+			return " - "
+		case "bar":
+			return " | "
+		}
+	}
+	return " · "
+}
+
+func metaText(start, end, loc string, locationFirst, mark bool, sep string) string {
 	dates := join(" — ", start, end)
 	if strings.TrimSpace(loc) == "" {
 		return dates
@@ -65,9 +79,9 @@ func metaText(start, end, loc string, locationFirst, mark bool) string {
 		loc = locMark + strings.TrimSpace(loc) + locMark
 	}
 	if locationFirst {
-		return join(" · ", loc, dates)
+		return join(sep, loc, dates)
 	}
-	return join(" · ", dates, loc)
+	return join(sep, dates, loc)
 }
 
 var (

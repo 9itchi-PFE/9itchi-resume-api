@@ -25,6 +25,7 @@ type CVStyle struct {
 	DatePosition string   `json:"date_position,omitempty" binding:"omitempty,oneof=right below"`
 	LocationPos   string `json:"location_position,omitempty" binding:"omitempty,oneof=line date"`
 	MetaOrder     string `json:"meta_order,omitempty" binding:"omitempty,oneof=date_first location_first"`
+	MetaSep       string `json:"meta_separator,omitempty" binding:"omitempty,oneof=bullet hyphen bar"`
 	HeaderLayout  string `json:"header_layout,omitempty" binding:"omitempty,oneof=stacked inline"`
 	HeaderValign  string `json:"header_valign,omitempty" binding:"omitempty,oneof=top middle bottom"`
 	PhotoPos      string `json:"photo_position,omitempty" binding:"omitempty,oneof=left right"`

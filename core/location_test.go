@@ -21,3 +21,8 @@ func TestLocationBesideDate(t *testing.T) {
 	assert.Equal(t, "01/2022", v.Experience[1].Start)
 	assert.Equal(t, "Sfax · 12/2022", v.Projects[0].Year)
 }
+
+func TestMetaSeparator(t *testing.T) {
+	assert.Equal(t, "07/2024 - Sfax", metaText("07/2024", "", "Sfax", false, false, metaSep(&api.CVStyle{MetaSep: "hyphen"})))
+	assert.Equal(t, "Sfax | 07/2024", metaText("07/2024", "", "Sfax", true, false, metaSep(&api.CVStyle{MetaSep: "bar"})))
+}
