@@ -11,14 +11,19 @@ const (
 
 // ResumeContent is the documented schema of resumes.content (jsonb). Template switches never touch it.
 //
-//	{"contact":{"name","email","phone","location","links":["https://..."]},
+//	{"contact":{"name","headline","email","phone","location","links":["https://..."]},
 //	 "summary":"...",
-//	 "experience":[{"company","title","start","end","description":["bullet"]}],
-//	 "education":[{"school","degree","start","end"}],
-//	 "skills":["Go"], "languages":["English"],
-//	 "certifications":[{"name","issuer","year"}]}
+//	 "experience":[{"company","title","kind","location","start","end","description":["bullet"]}],
+//	 "education":[{"school","degree","location","start","end"}],
+//	 "projects":[{"name","tech","year","description":["bullet"]}],
+//	 "skills":["Go"], "skill_groups":[{"label":"Langages","items":["C++"]}],
+//	 "languages":["Arabe: Langue maternelle"],
+//	 "certifications":[{"name","issuer","year"}],
+//	 "extra":[{"title":"Clubs","items":["..."]}]}
 //
-// Dates (start/end) are free text such as "2021-03" or "Present". The whole document is capped at MaxContentBytes.
+// Dates (start/end) are free text such as "2021-03" or "Present". A language may carry its level after a colon.
+// skill_groups, when present, is what the templates show; skills stays the flat list. The new fields are optional,
+// so older documents still parse. The whole document is capped at MaxContentBytes.
 type ResumeContent struct {
 	Contact        Contact         `json:"contact"`
 	Summary        string          `json:"summary" binding:"max=5000"`
@@ -27,6 +32,45 @@ type ResumeContent struct {
 	Skills         []string        `json:"skills" binding:"max=100,dive,max=100"`
 	Languages      []string        `json:"languages" binding:"max=30,dive,max=100"`
 	Certifications []Certification `json:"certifications" binding:"max=30,dive"`
+	Projects       []Project       `json:"projects,omitempty" binding:"max=30,dive"`
+	SkillGroups    []SkillGroup    `json:"skill_groups,omitempty" binding:"max=10,dive"`
+	Extra          []ExtraSection  `json:"extra,omitempty" binding:"max=10,dive"`
+}
+
+// AllSkills is the flat skill list followed by the grouped items not already in it.
+func (c ResumeContent) AllSkills() []string {
+	out := append([]string(nil), c.Skills...)
+	seen := map[string]bool{}
+	for _, s := range c.Skills {
+		seen[s] = true
+	}
+	for _, g := range c.SkillGroups {
+		for _, s := range g.Items {
+			if !seen[s] {
+				seen[s] = true
+				out = append(out, s)
+			}
+		}
+	}
+	return out
+}
+
+type Project struct {
+	Name        string   `json:"name" binding:"max=200"`
+	Tech        string   `json:"tech" binding:"max=200"`
+	Year        string   `json:"year" binding:"max=30"`
+	Description []string `json:"description" binding:"max=30,dive,max=1000"`
+}
+
+type SkillGroup struct {
+	Label string   `json:"label" binding:"max=100"`
+	Items []string `json:"items" binding:"max=50,dive,max=100"`
+}
+
+// ExtraSection is a section added with "+ Ajouter une section" (clubs, prix, bénévolat...).
+type ExtraSection struct {
+	Title string   `json:"title" binding:"max=100"`
+	Items []string `json:"items" binding:"max=30,dive,max=1000"`
 }
 
 type Certification struct {
@@ -37,6 +81,7 @@ type Certification struct {
 
 type Contact struct {
 	Name     string   `json:"name" binding:"max=200"`
+	Headline string   `json:"headline,omitempty" binding:"max=200"`
 	Email    string   `json:"email" binding:"max=200"`
 	Phone    string   `json:"phone" binding:"max=50"`
 	Location string   `json:"location" binding:"max=200"`
@@ -46,16 +91,19 @@ type Contact struct {
 type Experience struct {
 	Company     string   `json:"company" binding:"max=200"`
 	Title       string   `json:"title" binding:"max=200"`
+	Kind        string   `json:"kind,omitempty" binding:"max=100"`
+	Location    string   `json:"location,omitempty" binding:"max=200"`
 	Start       string   `json:"start" binding:"max=30"`
 	End         string   `json:"end" binding:"max=30"`
 	Description []string `json:"description" binding:"max=30,dive,max=1000"`
 }
 
 type Education struct {
-	School string `json:"school" binding:"max=200"`
-	Degree string `json:"degree" binding:"max=200"`
-	Start  string `json:"start" binding:"max=30"`
-	End    string `json:"end" binding:"max=30"`
+	School   string `json:"school" binding:"max=200"`
+	Degree   string `json:"degree" binding:"max=200"`
+	Location string `json:"location,omitempty" binding:"max=200"`
+	Start    string `json:"start" binding:"max=30"`
+	End      string `json:"end" binding:"max=30"`
 }
 
 // CreateResumeRequest is the body of POST /resumes.

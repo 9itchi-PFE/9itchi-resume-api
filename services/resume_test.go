@@ -3,6 +3,7 @@ package services
 import (
 	"bytes"
 	"context"
+	"errors"
 	"net/http"
 	"strings"
 	"testing"
@@ -267,11 +268,31 @@ func TestExportResume(t *testing.T) {
 		assert.True(t, bytes.HasPrefix(stored.Data, []byte("%PDF-")))
 		assert.Equal(t, int64(len(stored.Data)), stored.SizeBytes)
 	})
-	t.Run("docx unsupported", func(t *testing.T) {
-		_, apiErr := newF().svc.ExportResume(context.Background(), uid, rid, api.ExportResumeRequest{Format: "docx"})
+	t.Run("docx with the photo", func(t *testing.T) {
+		f := newF()
+		var stored *db.ResumeFile
+		f.files.CreateFn = func(_ context.Context, fl *db.ResumeFile) (*db.ResumeFileMeta, error) {
+			stored = fl
+			return &db.ResumeFileMeta{ID: "f1", Kind: fl.Kind, Format: fl.Format, Filename: fl.Filename}, nil
+		}
+		asked := false
+		f.files.LatestPhotoFn = func(context.Context, string) (*db.ResumeFile, error) {
+			asked = true
+			return nil, repositories.ErrNotFound
+		}
+		_, apiErr := f.svc.ExportResume(context.Background(), uid, rid, api.ExportResumeRequest{Format: "docx"})
+		require.Nil(t, apiErr)
+		assert.True(t, asked, "classic shows the photo")
+		assert.Equal(t, "My CV.docx", stored.Filename)
+		assert.Equal(t, "application/vnd.openxmlformats-officedocument.wordprocessingml.document", stored.ContentType)
+		assert.True(t, bytes.HasPrefix(stored.Data, []byte("PK")))
+	})
+	t.Run("photo read failure", func(t *testing.T) {
+		f := newF()
+		f.files.LatestPhotoFn = func(context.Context, string) (*db.ResumeFile, error) { return nil, errors.New("db down") }
+		_, apiErr := f.svc.ExportResume(context.Background(), uid, rid, api.ExportResumeRequest{Format: "pdf"})
 		require.NotNil(t, apiErr)
-		assert.Equal(t, http.StatusBadRequest, apiErr.Code)
-		assert.Contains(t, apiErr.Error.Error(), "docx")
+		assert.Equal(t, http.StatusInternalServerError, apiErr.Code)
 	})
 	t.Run("unknown format", func(t *testing.T) {
 		_, apiErr := newF().svc.ExportResume(context.Background(), uid, rid, api.ExportResumeRequest{Format: "odt"})
@@ -285,10 +306,11 @@ func TestExportResume(t *testing.T) {
 	})
 }
 
-func TestExportRegistryOnlyPDF(t *testing.T) {
+func TestExportRegistry(t *testing.T) {
 	reg := core.DefaultExporters()
-	assert.Len(t, reg, 1)
+	assert.Len(t, reg, 2)
 	assert.Contains(t, reg, "pdf")
+	assert.Contains(t, reg, "docx")
 }
 
 func TestATSCheckService(t *testing.T) {

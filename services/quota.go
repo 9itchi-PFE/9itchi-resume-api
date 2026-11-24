@@ -17,9 +17,10 @@ import (
 )
 
 const (
-	errQuotaUnavailable = "subscription check unavailable, try again"
-	errResumeLimit      = "subscription required for more than one CV"
-	errDownloadLimit    = "subscription required to download your CV again"
+	errQuotaUnavailable   = "subscription check unavailable, try again"
+	errResumeLimit        = "subscription required for more than one CV"
+	errDownloadLimit      = "subscription required to download your CV again"
+	errWordForSubscribers = "the Word file is for subscribers"
 )
 
 // plan returns the user's quotas, or nil when no quota source is configured (no limits).

@@ -50,7 +50,7 @@ type ResumeService interface {
 	ListVersions(ctx context.Context, userID string, id string) (*api.ListVersionsResponse, *models.ApiError)
 	// POST /resumes/:id/versions: snapshot a version
 	CreateVersion(ctx context.Context, userID string, id string) (*api.VersionResponse, *models.ApiError)
-	// POST /resumes/:id/export: export PDF (docx unsupported)
+	// POST /resumes/:id/export: export PDF, or Word for subscribers
 	ExportResume(ctx context.Context, userID string, id string, req api.ExportResumeRequest) (*api.FileResponse, *models.ApiError)
 	// POST /resumes/:id/ats-check: the 24 CV rules
 	ATSCheck(ctx context.Context, userID string, id string, req api.ATSCheckRequest) (*api.ATSCheckResponse, *models.ApiError)
@@ -398,12 +398,9 @@ func (s *resumeService) ExportResume(ctx context.Context, userID string, id stri
 		return nil, newError(http.StatusBadRequest, "invalid resume id")
 	}
 	format := strings.ToLower(strings.TrimSpace(req.Format))
-	if format == "docx" {
-		return nil, newError(http.StatusBadRequest, "docx export is not supported yet, use pdf")
-	}
 	exporter, ok := s.exporters[format]
 	if !ok {
-		return nil, newError(http.StatusBadRequest, "unsupported export format, use pdf")
+		return nil, newError(http.StatusBadRequest, "unsupported export format, use pdf or docx")
 	}
 	res, err := s.repo.Get(ctx, userID, id)
 	if err != nil {
@@ -412,6 +409,10 @@ func (s *resumeService) ExportResume(ctx context.Context, userID string, id stri
 	branded, apiErr := s.checkDownloadQuota(ctx, userID)
 	if apiErr != nil {
 		return nil, apiErr
+	}
+	// The Word file is for subscribers (screen 4.1 download dialog); free downloads are branded PDFs.
+	if format == "docx" && branded {
+		return nil, newError(http.StatusPaymentRequired, errWordForSubscribers)
 	}
 	layout := ""
 	if res.TemplateID != nil {
@@ -424,7 +425,15 @@ func (s *resumeService) ExportResume(ctx context.Context, userID string, id stri
 	if res.Language != nil && *res.Language == "en" {
 		lang = "en"
 	}
-	data, err := exporter.Render(ctx, content, layout, core.RenderOptions{Language: lang, Branded: branded})
+	opts := core.RenderOptions{Language: lang, Branded: branded}
+	if layout != "compact" {
+		if p, err := s.files.LatestPhoto(ctx, res.ID); err == nil {
+			opts.Photo, opts.PhotoFormat = p.Data, p.Format
+		} else if !errors.Is(err, repositories.ErrNotFound) {
+			return nil, repoError(err, "resume not found")
+		}
+	}
+	data, err := exporter.Render(ctx, content, layout, opts)
 	if err != nil {
 		utils.Logger.Error("export render failed", zap.Error(err))
 		return nil, newError(http.StatusInternalServerError, "export failed")
@@ -438,7 +447,7 @@ func (s *resumeService) ExportResume(ctx context.Context, userID string, id stri
 			Kind:        "export",
 			Format:      format,
 			Filename:    exportFilename(content.Contact.Name, res.Title) + "." + format,
-			ContentType: contentTypePDF,
+			ContentType: exportContentType(format),
 			SizeBytes:   int64(len(data)),
 			SHA256:      hex.EncodeToString(sum[:]),
 			Data:        data,
@@ -500,4 +509,11 @@ func (s *resumeService) InternalResumePDF(ctx context.Context, id string) (*api.
 		return nil, repoError(err, "no exported pdf")
 	}
 	return &api.FileContent{Filename: f.Filename, ContentType: f.ContentType, Data: f.Data}, nil
+}
+
+func exportContentType(format string) string {
+	if format == "docx" {
+		return contentTypeDOCX
+	}
+	return contentTypePDF
 }

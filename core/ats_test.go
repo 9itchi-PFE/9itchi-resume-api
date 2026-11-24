@@ -177,3 +177,16 @@ func TestPageCount(t *testing.T) {
 	require.NotEmpty(t, out)
 	assert.Equal(t, 1, pageCount(out))
 }
+
+func TestProjectsAndSkillGroupsAreChecked(t *testing.T) {
+	c := goodCV()
+	c.Projects = []api.Project{{Name: "Marketplace", Description: []string{"Plateforme d'achat-vente entre 300 étudiants."}}}
+	out := CheckATS(ATSInput{Content: c, Language: "fr", ExportFilename: "ines_mansour.pdf"})
+	assert.Equal(t, "projects[0].description[0]", findRule(out, "action_verbs").Where, "project lines must start with a past verb too")
+
+	c = goodCV()
+	c.SkillGroups = []api.SkillGroup{{Label: "Langages", Items: c.Skills}}
+	c.Skills = nil
+	out = CheckATS(ATSInput{Content: c, Language: "fr", ExportFilename: "ines_mansour.pdf"})
+	assert.Equal(t, RuleOK, findRule(out, "relevant_skills").Status, "grouped skills count")
+}

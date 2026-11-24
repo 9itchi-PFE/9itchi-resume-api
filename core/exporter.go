@@ -20,11 +20,16 @@ type RenderOptions struct {
 	Language string
 	// Branded adds the "made with 9itchi" mark to every page (free plan download).
 	Branded bool
+	// Photo is the CV photo (JPEG or PNG, PhotoFormat "jpeg" or "png"). Classic and modern show it in a circle;
+	// compact never does.
+	Photo       []byte
+	PhotoFormat string
 }
 
-// DefaultExporters is the registry keyed by format. Only pdf is registered; docx is unsupported.
+// DefaultExporters is the registry keyed by format.
 func DefaultExporters() map[string]Exporter {
 	return map[string]Exporter{
-		"pdf": NewPDFExporter(),
+		"pdf":  NewPDFExporter(),
+		"docx": NewDOCXExporter(),
 	}
 }

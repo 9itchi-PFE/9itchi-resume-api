@@ -49,10 +49,10 @@ func TestPDFExporterEmptyAndHostileContent(t *testing.T) {
 	assert.True(t, bytes.HasPrefix(out, []byte("%PDF-")))
 }
 
-func TestPDFText(t *testing.T) {
-	assert.Equal(t, "a?b?c", pdfText("a中b\U0001F600c"))
-	assert.Equal(t, "a b c", pdfText("a\tb\nc"))
-	assert.Equal(t, "caf\xe9", pdfText("café"))
+func TestCleanText(t *testing.T) {
+	assert.Equal(t, "a?b?c", cleanText("a中b\U0001F600c"))
+	assert.Equal(t, "a b c", cleanText("a\tb\nc"))
+	assert.Equal(t, "Élève — café · ok", cleanText("Élève — café · ok"))
 }
 
 func TestPDFExporterCanceledContext(t *testing.T) {
@@ -64,6 +64,7 @@ func TestPDFExporterCanceledContext(t *testing.T) {
 
 func TestDefaultExporters(t *testing.T) {
 	reg := DefaultExporters()
-	require.Len(t, reg, 1)
+	require.Len(t, reg, 2)
 	assert.Equal(t, "pdf", reg["pdf"].Format())
+	assert.Equal(t, "docx", reg["docx"].Format())
 }

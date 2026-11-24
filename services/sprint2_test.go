@@ -171,6 +171,12 @@ func TestDownloadQuotaAndBranding(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, text, "9itchi-pfe.com", "the free download carries the mark")
 
+	f, _ = setup(free, 0)
+	_, apiErr = f.svc.ExportResume(context.Background(), uid, rid, api.ExportResumeRequest{Format: "docx"})
+	require.NotNil(t, apiErr)
+	assert.Equal(t, http.StatusPaymentRequired, apiErr.Code)
+	assert.Equal(t, errWordForSubscribers, apiErr.Error.Error())
+
 	f, _ = setup(free, 1)
 	_, apiErr = f.svc.ExportResume(context.Background(), uid, rid, api.ExportResumeRequest{Format: "pdf"})
 	require.NotNil(t, apiErr)
@@ -182,6 +188,12 @@ func TestDownloadQuotaAndBranding(t *testing.T) {
 	require.Nil(t, apiErr)
 	text, _ = core.ExtractText("pdf", *data)
 	assert.NotContains(t, text, "9itchi-pfe.com")
+	res, apiErr = f.svc.ExportResume(context.Background(), uid, rid, api.ExportResumeRequest{Format: "docx"})
+	require.Nil(t, apiErr, "subscribers get the Word file")
+	assert.Equal(t, "ines_ben_mansour.docx", res.Filename)
+	text, err = core.ExtractText("docx", *data)
+	require.NoError(t, err)
+	assert.Contains(t, text, "Inès Ben Mansour")
 
 	f, _ = setup(fakeQuotas{err: core.ErrPeerUnavailable}, 0)
 	_, apiErr = f.svc.ExportResume(context.Background(), uid, rid, api.ExportResumeRequest{Format: "pdf"})

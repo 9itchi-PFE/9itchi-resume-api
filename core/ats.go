@@ -130,7 +130,7 @@ func CheckATS(in ATSInput) api.ATSCheckResponse {
 
 	// Skills
 	okOr("no_skill_ratings", ratings(c))
-	if n := len(c.Skills); n == 0 || n > 20 {
+	if n := len(c.AllSkills()); n == 0 || n > 20 {
 		okOr("relevant_skills", &api.ATSFinding{Where: "skills", Was: strconv.Itoa(n)})
 	} else {
 		okOr("relevant_skills", nil)
@@ -186,16 +186,27 @@ func CheckATS(in ATSInput) api.ATSCheckResponse {
 	return resp
 }
 
-// bullets walks experience descriptions with their JSON path.
+// bullets walks experience then project descriptions with their JSON path.
 func bullets(c api.ResumeContent, fn func(path, text string) bool) {
-	for i, e := range c.Experience {
-		for j, d := range e.Description {
+	walk := func(section string, i int, lines []string) bool {
+		for j, d := range lines {
 			if strings.TrimSpace(d) == "" {
 				continue
 			}
-			if fn(fmt.Sprintf("experience[%d].description[%d]", i, j), strings.TrimSpace(d)) {
-				return
+			if fn(fmt.Sprintf("%s[%d].description[%d]", section, i, j), strings.TrimSpace(d)) {
+				return true
 			}
+		}
+		return false
+	}
+	for i, e := range c.Experience {
+		if walk("experience", i, e.Description) {
+			return
+		}
+	}
+	for i, p := range c.Projects {
+		if walk("projects", i, p.Description) {
+			return
 		}
 	}
 }
