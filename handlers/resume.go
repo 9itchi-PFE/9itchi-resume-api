@@ -183,7 +183,7 @@ func ATSCheck(svc services.ResumeService) gin.HandlerFunc {
 	}
 }
 
-// InternalResumePDF: GET /internal/resumes/:id/pdf (internal) latest exported PDF bytes (email attachments).
+// InternalResumePDF: GET /internal/resumes/:id/pdf (internal) the CV as it is now, as a PDF (email attachments).
 func InternalResumePDF(svc services.ResumeService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		result, apiErr := svc.InternalResumePDF(c.Request.Context(), c.Param("id"))

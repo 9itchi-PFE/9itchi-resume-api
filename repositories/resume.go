@@ -18,6 +18,8 @@ const (
 type ResumeRepository interface {
 	Create(ctx context.Context, userID, title string, templateID *string, content []byte) (*db.Resume, error)
 	Get(ctx context.Context, userID, id string) (*db.Resume, error)
+	// GetByID returns a resume whoever owns it (internal callers only, e.g. the CV attached to an application).
+	GetByID(ctx context.Context, id string) (*db.Resume, error)
 	// Exists returns ErrNotFound when the resume does not exist or belongs to someone else.
 	Exists(ctx context.Context, userID, id string) error
 	// List never selects the content column.
@@ -67,6 +69,17 @@ func (r *resumeRepository) Get(ctx context.Context, userID, id string) (*db.Resu
 	defer cancel()
 	rows, err := r.store.Conn(ctx).Query(ctx,
 		`SELECT `+resumeColumns+` FROM resumes WHERE id = $1 AND user_id = $2`, id, userID)
+	if err != nil {
+		return nil, MapError(err)
+	}
+	res, err := pgx.CollectOneRow(rows, pgx.RowToAddrOfStructByName[db.Resume])
+	return res, MapError(err)
+}
+
+func (r *resumeRepository) GetByID(ctx context.Context, id string) (*db.Resume, error) {
+	ctx, cancel := QueryTimeout(ctx)
+	defer cancel()
+	rows, err := r.store.Conn(ctx).Query(ctx, `SELECT `+resumeColumns+` FROM resumes WHERE id = $1`, id)
 	if err != nil {
 		return nil, MapError(err)
 	}

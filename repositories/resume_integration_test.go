@@ -240,3 +240,20 @@ func TestUploadStyleTransactionRollsBack(t *testing.T) {
 }
 
 func ptr[T any](v T) *T { return &v }
+
+func TestGetByIDIgnoresTheOwner(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+	repo := NewResumeRepository(store)
+
+	created, err := repo.Create(ctx, "00000000-0000-0000-0000-0000000000a1", "CV", nil, []byte(`{"summary":"hi"}`))
+	require.NoError(t, err)
+
+	got, err := repo.GetByID(ctx, created.ID)
+	require.NoError(t, err)
+	assert.Equal(t, created.ID, got.ID)
+	assert.JSONEq(t, `{"summary":"hi"}`, string(got.Content))
+
+	_, err = repo.GetByID(ctx, "00000000-0000-0000-0000-0000000000ff")
+	assert.ErrorIs(t, err, ErrNotFound)
+}

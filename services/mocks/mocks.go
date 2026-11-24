@@ -22,6 +22,7 @@ func (t Tx) WithTx(ctx context.Context, fn func(ctx context.Context) error) erro
 type ResumeRepo struct {
 	CreateFn         func(ctx context.Context, userID, title string, templateID *string, content []byte) (*db.Resume, error)
 	GetFn            func(ctx context.Context, userID, id string) (*db.Resume, error)
+	GetByIDFn        func(ctx context.Context, id string) (*db.Resume, error)
 	ExistsFn         func(ctx context.Context, userID, id string) error
 	ListFn           func(ctx context.Context, userID string, limit, offset int) ([]db.ResumeSummary, int, error)
 	UpdateFn         func(ctx context.Context, userID, id string, title, templateID *string, content []byte) (*db.Resume, error)
@@ -77,6 +78,13 @@ func (m *ResumeRepo) Get(ctx context.Context, userID, id string) (*db.Resume, er
 		return nil, nil
 	}
 	return m.GetFn(ctx, userID, id)
+}
+
+func (m *ResumeRepo) GetByID(ctx context.Context, id string) (*db.Resume, error) {
+	if m.GetByIDFn == nil {
+		return nil, repositories.ErrNotFound
+	}
+	return m.GetByIDFn(ctx, id)
 }
 
 func (m *ResumeRepo) Exists(ctx context.Context, userID, id string) error {
