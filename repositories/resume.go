@@ -88,11 +88,12 @@ func (r *resumeRepository) List(ctx context.Context, userID string, limit, offse
 	defer cancel()
 	var total int
 	if err := r.store.Conn(ctx).QueryRow(ctx,
-		`SELECT count(*) FROM resumes WHERE user_id = $1`, userID).Scan(&total); err != nil {
+		`SELECT count(*) FROM resumes WHERE user_id = $1 AND parse_status <> 'failed'`, userID).Scan(&total); err != nil {
 		return nil, 0, MapError(err)
 	}
+	// A CV that could not be read is not a CV: it must not count as uploaded.
 	rows, err := r.store.Conn(ctx).Query(ctx,
-		`SELECT `+resumeSummaryColumns+` FROM resumes WHERE user_id = $1
+		`SELECT `+resumeSummaryColumns+` FROM resumes WHERE user_id = $1 AND parse_status <> 'failed'
 		 ORDER BY updated_at DESC, id LIMIT $2 OFFSET $3`, userID, limit, offset)
 	if err != nil {
 		return nil, 0, MapError(err)
@@ -174,7 +175,7 @@ func (r *resumeRepository) CountByUser(ctx context.Context, userID string) (int,
 	ctx, cancel := QueryTimeout(ctx)
 	defer cancel()
 	var n int
-	err := r.store.Conn(ctx).QueryRow(ctx, `SELECT count(*) FROM resumes WHERE user_id = $1`, userID).Scan(&n)
+	err := r.store.Conn(ctx).QueryRow(ctx, `SELECT count(*) FROM resumes WHERE user_id = $1 AND parse_status <> 'failed'`, userID).Scan(&n)
 	return n, MapError(err)
 }
 

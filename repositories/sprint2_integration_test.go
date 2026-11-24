@@ -54,6 +54,25 @@ func TestParseStatusLifecycle(t *testing.T) {
 	assert.ErrorIs(t, repo.SetParseStatus(ctx, "00000000-0000-0000-0000-0000000000ff", db.ParseFailed), ErrNotFound)
 }
 
+func TestFailedUploadIsNotACV(t *testing.T) {
+	store := newTestStore(t)
+	repo := NewResumeRepository(store)
+	ctx := context.Background()
+	const u = "00000000-0000-0000-0000-0000000000a1"
+
+	r, err := repo.Create(ctx, u, "cv", nil, []byte(`{}`))
+	require.NoError(t, err)
+	require.NoError(t, repo.SetParseStatus(ctx, r.ID, db.ParseFailed))
+
+	items, total, err := repo.List(ctx, u, 10, 0)
+	require.NoError(t, err)
+	assert.Empty(t, items)
+	assert.Zero(t, total)
+	n, err := repo.CountByUser(ctx, u)
+	require.NoError(t, err)
+	assert.Zero(t, n)
+}
+
 func TestCountsForQuotas(t *testing.T) {
 	store := newTestStore(t)
 	resumes := NewResumeRepository(store)
