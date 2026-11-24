@@ -68,7 +68,7 @@ type ResumeService interface {
 	DeletePhoto(ctx context.Context, userID, id string) *models.ApiError
 	// GET /me/downloads: how many CV downloads the user made (the free plan allows one)
 	Downloads(ctx context.Context, userID string) (*api.DownloadsResponse, *models.ApiError)
-	// GET /internal/resumes/:id/pdf: latest exported PDF bytes (email attachments), no user scoping
+	// GET /internal/resumes/:id/pdf: the CV as it is now, rendered as a PDF (email attachments), no user scoping
 	InternalResumePDF(ctx context.Context, id string) (*api.FileContent, *models.ApiError)
 }
 
@@ -430,29 +430,9 @@ func (s *resumeService) ExportResume(ctx context.Context, userID string, id stri
 	if format == "docx" && branded {
 		return nil, newError(http.StatusPaymentRequired, errWordForSubscribers)
 	}
-	layout := ""
-	if res.TemplateID != nil {
-		if t, err := s.templates.Get(ctx, *res.TemplateID); err == nil {
-			layout = t.Layout
-		}
-	}
-	content := mapping.ParseContent(res.Content)
-	lang := "fr"
-	if res.Language != nil && *res.Language == "en" {
-		lang = "en"
-	}
-	opts := core.RenderOptions{Language: lang}
-	if layout != "compact" {
-		if p, err := s.files.LatestPhoto(ctx, res.ID); err == nil {
-			opts.Photo, opts.PhotoFormat = p.Data, p.Format
-		} else if !errors.Is(err, repositories.ErrNotFound) {
-			return nil, repoError(err, "resume not found")
-		}
-	}
-	data, err := exporter.Render(ctx, content, layout, opts)
-	if err != nil {
-		utils.Logger.Error("export render failed", zap.Error(err))
-		return nil, newError(http.StatusInternalServerError, "export failed")
+	data, content, apiErr := s.render(ctx, res, exporter)
+	if apiErr != nil {
+		return nil, apiErr
 	}
 	sum := sha256.Sum256(data)
 	var meta *db.ResumeFileMeta
@@ -516,15 +496,53 @@ func (s *resumeService) ATSCheck(ctx context.Context, userID string, id string, 
 	return &out, nil
 }
 
+// render draws the resume as it is now (template, language, photo) with the given exporter.
+func (s *resumeService) render(ctx context.Context, res *db.Resume, exporter core.Exporter) ([]byte, api.ResumeContent, *models.ApiError) {
+	layout := ""
+	if res.TemplateID != nil {
+		if t, err := s.templates.Get(ctx, *res.TemplateID); err == nil {
+			layout = t.Layout
+		}
+	}
+	content := mapping.ParseContent(res.Content)
+	lang := "fr"
+	if res.Language != nil && *res.Language == "en" {
+		lang = "en"
+	}
+	opts := core.RenderOptions{Language: lang}
+	if layout != "compact" {
+		if p, err := s.files.LatestPhoto(ctx, res.ID); err == nil {
+			opts.Photo, opts.PhotoFormat = p.Data, p.Format
+		} else if !errors.Is(err, repositories.ErrNotFound) {
+			return nil, content, repoError(err, "resume not found")
+		}
+	}
+	data, err := exporter.Render(ctx, content, layout, opts)
+	if err != nil {
+		utils.Logger.Error("export render failed", zap.Error(err))
+		return nil, content, newError(http.StatusInternalServerError, "export failed")
+	}
+	return data, content, nil
+}
+
+// InternalResumePDF renders the CV as it is now, so an application always carries the current CV and not an
+// older download. Nothing is stored and it does not count as a download of the student.
 func (s *resumeService) InternalResumePDF(ctx context.Context, id string) (*api.FileContent, *models.ApiError) {
 	if !isUUID(id) {
 		return nil, newError(http.StatusBadRequest, "invalid resume id")
 	}
-	f, err := s.files.LatestExport(ctx, id, "pdf")
+	res, err := s.repo.GetByID(ctx, id)
 	if err != nil {
-		return nil, repoError(err, "no exported pdf")
+		return nil, repoError(err, "resume not found")
 	}
-	return &api.FileContent{Filename: f.Filename, ContentType: f.ContentType, Data: f.Data}, nil
+	if res == nil {
+		return nil, newError(http.StatusNotFound, "resume not found")
+	}
+	data, content, apiErr := s.render(ctx, res, s.exporters["pdf"])
+	if apiErr != nil {
+		return nil, apiErr
+	}
+	return &api.FileContent{Filename: exportFilename(content.Contact.Name, res.Title) + ".pdf", ContentType: contentTypePDF, Data: data}, nil
 }
 
 func exportContentType(format string) string {

@@ -349,13 +349,36 @@ func TestInternalResumePDF(t *testing.T) {
 	require.NotNil(t, apiErr)
 	assert.Equal(t, http.StatusNotFound, apiErr.Code)
 
-	f.files.LatestExportFn = func(_ context.Context, _, format string) (*db.ResumeFile, error) {
-		assert.Equal(t, "pdf", format)
-		return &db.ResumeFile{Filename: "a.pdf", ContentType: "application/pdf", Data: pdfBytes()}, nil
+	_, apiErr = f.svc.InternalResumePDF(context.Background(), "nope")
+	require.NotNil(t, apiErr)
+	assert.Equal(t, http.StatusBadRequest, apiErr.Code)
+
+	// The current content is rendered: no stored export is read, nothing is stored, no download is counted.
+	f.resumes.GetByIDFn = func(_ context.Context, id string) (*db.Resume, error) {
+		return &db.Resume{ID: id, Title: "My CV", Content: []byte(`{"contact":{"name":"Inès Mansour"},"summary":"hello"}`)}, nil
+	}
+	f.files.LatestExportFn = func(context.Context, string, string) (*db.ResumeFile, error) {
+		t.Fatal("an older export must not be used")
+		return nil, nil
+	}
+	f.files.CreateFn = func(context.Context, *db.ResumeFile) (*db.ResumeFileMeta, error) {
+		t.Fatal("the attachment must not be stored")
+		return nil, nil
+	}
+	f.files.RecordDownloadFn = func(context.Context, string, string, string) error {
+		t.Fatal("the attachment is not a download")
+		return nil
 	}
 	got, apiErr := f.svc.InternalResumePDF(context.Background(), rid)
 	require.Nil(t, apiErr)
 	assert.Equal(t, "application/pdf", got.ContentType)
+	assert.Equal(t, "ines_mansour.pdf", got.Filename)
+	assert.True(t, bytes.HasPrefix(got.Data, []byte("%PDF-")))
+
+	f.resumes.GetByIDFn = func(context.Context, string) (*db.Resume, error) { return nil, errors.New("boom") }
+	_, apiErr = f.svc.InternalResumePDF(context.Background(), rid)
+	require.NotNil(t, apiErr)
+	assert.Equal(t, http.StatusInternalServerError, apiErr.Code)
 }
 
 func ptr[T any](v T) *T { return &v }

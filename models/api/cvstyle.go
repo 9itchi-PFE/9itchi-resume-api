@@ -9,38 +9,37 @@ import (
 // CVStyle is the optional look of a resume. A zero value means "the template's default", so documents that never
 // opened the style panel are unchanged. The client preview and the PDF/DOCX exporters read the same fields.
 type CVStyle struct {
-	BaseSize     float64  `json:"base_size,omitempty" binding:"omitempty,min=7,max=14"`    // body text, pt
-	NameDelta    *float64 `json:"name_delta,omitempty" binding:"omitempty,min=-3,max=20"`  // added to the base size, pt
-	TitleDelta   *float64 `json:"title_delta,omitempty" binding:"omitempty,min=-3,max=20"` // professional title
-	HeadingDelta *float64 `json:"heading_delta,omitempty" binding:"omitempty,min=-3,max=20"`
-	EntryDelta   *float64 `json:"entry_delta,omitempty" binding:"omitempty,min=-3,max=10"` // entry header lines
-	LineHeight   float64  `json:"line_height,omitempty" binding:"omitempty,min=1,max=2"`   // multiplier
-	Gap          *float64 `json:"gap,omitempty" binding:"omitempty,min=0,max=10"`          // between entries, mm
-	MarginX      float64  `json:"margin_x,omitempty" binding:"omitempty,min=5,max=30"`     // left and right, mm
-	MarginY      float64  `json:"margin_y,omitempty" binding:"omitempty,min=5,max=30"`     // top and bottom, mm
-	NameFont     string   `json:"name_font,omitempty" binding:"omitempty,oneof=sans serif"`
-	BodyFont     string   `json:"body_font,omitempty" binding:"omitempty,oneof=sourcesans lato carlito tinos amiri ptsans ptserif crimson"` // applies to all body text
-	HeadingBold  *bool    `json:"heading_bold,omitempty"`
-	HeadingCase  string   `json:"heading_case,omitempty" binding:"omitempty,oneof=capitalize uppercase"`
-	DatePosition string   `json:"date_position,omitempty" binding:"omitempty,oneof=right below"`
-	LocationPos   string `json:"location_position,omitempty" binding:"omitempty,oneof=line date"`
-	MetaOrder     string `json:"meta_order,omitempty" binding:"omitempty,oneof=date_first location_first"`
-	MetaSep       string `json:"meta_separator,omitempty" binding:"omitempty,oneof=bullet hyphen bar"`
-	HeaderLayout  string `json:"header_layout,omitempty" binding:"omitempty,oneof=stacked inline"`
-	HeaderValign  string `json:"header_valign,omitempty" binding:"omitempty,oneof=top middle bottom"`
-	PhotoPos      string `json:"photo_position,omitempty" binding:"omitempty,oneof=left right"`
-	ListStyle     string `json:"list_style,omitempty" binding:"omitempty,oneof=bullet hyphen"`
-	IndentBody    *bool  `json:"indent_body,omitempty"`
-	SubtitleStyle string `json:"subtitle_style,omitempty" binding:"omitempty,oneof=normal bold italic"`
-	DateStyle     string `json:"date_style,omitempty" binding:"omitempty,oneof=normal bold italic"`
-	Align        string   `json:"align,omitempty" binding:"omitempty,oneof=left center"`        // header text alignment
-	Separator    string   `json:"separator,omitempty" binding:"omitempty,oneof=bullet bar icon"`     // between contact details
-	ColorMode    string   `json:"color_mode,omitempty" binding:"omitempty,oneof=single multi"`  // single: accent on black text, white page
-	Accent       string   `json:"accent,omitempty" binding:"omitempty,max=7"`
-	Text         string   `json:"text,omitempty" binding:"omitempty,max=7"`
-	Background   string   `json:"background,omitempty" binding:"omitempty,max=7"`
-	AccentOn     []string `json:"accent_on" binding:"max=10,dive,oneof=name title headings rules dates location entry_title subtitle links"` // nil: the template defaults; empty: nothing
-	ShowPhoto    *bool    `json:"show_photo,omitempty"`
+	BaseSize      float64  `json:"base_size,omitempty" binding:"omitempty,min=7,max=14"`    // body text, pt
+	NameDelta     *float64 `json:"name_delta,omitempty" binding:"omitempty,min=-3,max=20"`  // added to the base size, pt
+	TitleDelta    *float64 `json:"title_delta,omitempty" binding:"omitempty,min=-3,max=20"` // professional title
+	HeadingDelta  *float64 `json:"heading_delta,omitempty" binding:"omitempty,min=-3,max=20"`
+	EntryDelta    *float64 `json:"entry_delta,omitempty" binding:"omitempty,min=-3,max=10"` // entry header lines
+	LineHeight    float64  `json:"line_height,omitempty" binding:"omitempty,min=1,max=2"`   // multiplier
+	Gap           *float64 `json:"gap,omitempty" binding:"omitempty,min=0,max=10"`          // between entries, mm
+	MarginX       float64  `json:"margin_x,omitempty" binding:"omitempty,min=5,max=30"`     // left and right, mm
+	MarginY       float64  `json:"margin_y,omitempty" binding:"omitempty,min=5,max=30"`     // top and bottom, mm
+	NameFont      string   `json:"name_font,omitempty" binding:"omitempty,oneof=sans serif"`
+	BodyFont      string   `json:"body_font,omitempty" binding:"omitempty,oneof=sourcesans lato carlito tinos amiri ptsans ptserif crimson"` // applies to all body text
+	HeadingBold   *bool    `json:"heading_bold,omitempty"`
+	HeadingCase   string   `json:"heading_case,omitempty" binding:"omitempty,oneof=capitalize uppercase"`
+	DatePosition  string   `json:"date_position,omitempty" binding:"omitempty,oneof=right below"`
+	LocationPos   string   `json:"location_position,omitempty" binding:"omitempty,oneof=line date"`
+	MetaOrder     string   `json:"meta_order,omitempty" binding:"omitempty,oneof=date_first location_first"`
+	HeaderLayout  string   `json:"header_layout,omitempty" binding:"omitempty,oneof=stacked inline"`
+	HeaderValign  string   `json:"header_valign,omitempty" binding:"omitempty,oneof=top middle bottom"`
+	PhotoPos      string   `json:"photo_position,omitempty" binding:"omitempty,oneof=left right"`
+	ListStyle     string   `json:"list_style,omitempty" binding:"omitempty,oneof=bullet hyphen"`
+	IndentBody    *bool    `json:"indent_body,omitempty"`
+	SubtitleStyle string   `json:"subtitle_style,omitempty" binding:"omitempty,oneof=normal bold italic"`
+	DateStyle     string   `json:"date_style,omitempty" binding:"omitempty,oneof=normal bold italic"`
+	Align         string   `json:"align,omitempty" binding:"omitempty,oneof=left center"`         // header text alignment
+	Separator     string   `json:"separator,omitempty" binding:"omitempty,oneof=bullet bar icon"` // between contact details
+	ColorMode     string   `json:"color_mode,omitempty" binding:"omitempty,oneof=single multi"`   // single: accent on black text, white page
+	Accent        string   `json:"accent,omitempty" binding:"omitempty,max=7"`
+	Text          string   `json:"text,omitempty" binding:"omitempty,max=7"`
+	Background    string   `json:"background,omitempty" binding:"omitempty,max=7"`
+	AccentOn      []string `json:"accent_on" binding:"max=10,dive,oneof=name title headings rules dates location entry_title subtitle links"` // nil: the template defaults; empty: nothing
+	ShowPhoto     *bool    `json:"show_photo,omitempty"`
 }
 
 var hexColor = regexp.MustCompile(`^#[0-9A-Fa-f]{6}$`)
