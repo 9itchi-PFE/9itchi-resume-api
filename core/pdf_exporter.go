@@ -324,14 +324,35 @@ func minf(a, b float64) float64 {
 	return b
 }
 
+type fontFiles4 struct{ regular, italic, bold, semi string }
+
+// bodyFonts are the typefaces a user can pick for the whole CV; each is registered under the body family names,
+// so every piece of text follows the choice. Families without a semibold use their bold.
+var bodyFonts = map[string]fontFiles4{
+	"sourcesans": {"SourceSans3-Regular.ttf", "SourceSans3-It.ttf", "SourceSans3-Bold.ttf", "SourceSans3-Semibold.ttf"},
+	"lato":       {"Lato-Regular.ttf", "Lato-Italic.ttf", "Lato-Bold.ttf", "Lato-Bold.ttf"},
+	"carlito":    {"Carlito-Regular.ttf", "Carlito-Italic.ttf", "Carlito-Bold.ttf", "Carlito-Bold.ttf"},
+	"tinos":      {"Tinos-Regular.ttf", "Tinos-Italic.ttf", "Tinos-Bold.ttf", "Tinos-Bold.ttf"},
+}
+
+func bodyFontKey(s *api.CVStyle) string {
+	if s != nil {
+		if _, ok := bodyFonts[s.BodyFont]; ok {
+			return s.BodyFont
+		}
+	}
+	return "sourcesans"
+}
+
 func (pdfExporter) Render(ctx context.Context, c api.ResumeContent, layout string, opts RenderOptions) ([]byte, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
 	pdf := fpdf.New("P", "mm", "A4", "")
+	body := bodyFonts[bodyFontKey(c.Style)]
 	for _, f := range []struct{ family, style, file string }{
-		{sans, "", "SourceSans3-Regular.ttf"}, {sans, "I", "SourceSans3-It.ttf"}, {sans, "B", "SourceSans3-Bold.ttf"},
-		{sansSemi, "", "SourceSans3-Semibold.ttf"}, {serif, "B", "SourceSerif4-Bold.ttf"},
+		{sans, "", body.regular}, {sans, "I", body.italic}, {sans, "B", body.bold},
+		{sansSemi, "", body.semi}, {serif, "B", "SourceSerif4-Bold.ttf"},
 	} {
 		data, err := fontFiles.ReadFile("fonts/" + f.file)
 		if err != nil {

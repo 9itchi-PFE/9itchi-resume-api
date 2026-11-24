@@ -116,7 +116,7 @@ func encodeContent(c api.ResumeContent) ([]byte, *models.ApiError) {
 	if !c.Style.Valid() {
 		return nil, newError(http.StatusBadRequest, "invalid style color (use #RRGGBB)")
 	}
-	if !api.ValidSectionOrder(c.SectionOrderKeys) {
+	if !api.ValidSectionOrder(c.SectionOrderKeys) || !api.ValidSectionOrder(c.HiddenSections) {
 		return nil, newError(http.StatusBadRequest, "invalid section order")
 	}
 	raw, err := json.Marshal(mapping.NormalizeContent(c))

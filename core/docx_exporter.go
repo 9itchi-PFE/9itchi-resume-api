@@ -165,6 +165,17 @@ func para(p pp, runs ...string) string {
 }
 
 // docx collects the body of one resume.
+// docBodyFont maps the chosen typeface to the Office font Word users have: Source Sans 3 and Carlito are drawn as Calibri.
+func docBodyFont(s *api.CVStyle) string {
+	switch bodyFontKey(s) {
+	case "lato":
+		return "Lato"
+	case "tinos":
+		return "Times New Roman"
+	}
+	return "Calibri"
+}
+
 type docx struct {
 	c      api.ResumeContent
 	titles map[string]string
@@ -706,7 +717,7 @@ func (d *docx) pack(sect string, branded bool) ([]byte, error) {
 	}
 	add("word/_rels/document.xml.rels", xmlHead+rels+`</Relationships>`)
 	add("word/styles.xml", xmlHead+`<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">`+
-		`<w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="Calibri" w:hAnsi="Calibri" w:eastAsia="Calibri" w:cs="Arial"/><w:color w:val="1A1A1A"/><w:sz w:val="21"/><w:szCs w:val="21"/><w:lang w:val="fr-FR"/></w:rPr></w:rPrDefault>`+
+		`<w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="`+docBodyFont(d.c.Style)+`" w:hAnsi="`+docBodyFont(d.c.Style)+`" w:eastAsia="Calibri" w:cs="Arial"/><w:color w:val="1A1A1A"/><w:sz w:val="21"/><w:szCs w:val="21"/><w:lang w:val="fr-FR"/></w:rPr></w:rPrDefault>`+
 		`<w:pPrDefault><w:pPr><w:spacing w:after="0" w:line="252" w:lineRule="auto"/></w:pPr></w:pPrDefault></w:docDefaults>`+
 		`<w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/><w:qFormat/></w:style>`+
 		`</w:styles>`)

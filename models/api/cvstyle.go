@@ -18,7 +18,8 @@ type CVStyle struct {
 	Gap          *float64 `json:"gap,omitempty" binding:"omitempty,min=0,max=10"`          // between entries, mm
 	MarginX      float64  `json:"margin_x,omitempty" binding:"omitempty,min=5,max=30"`     // left and right, mm
 	MarginY      float64  `json:"margin_y,omitempty" binding:"omitempty,min=5,max=30"`     // top and bottom, mm
-	NameFont     string   `json:"name_font,omitempty" binding:"omitempty,oneof=sans serif"` // body font is always Source Sans 3
+	NameFont     string   `json:"name_font,omitempty" binding:"omitempty,oneof=sans serif"`
+	BodyFont     string   `json:"body_font,omitempty" binding:"omitempty,oneof=sourcesans lato carlito tinos"` // applies to all body text
 	HeadingCase  string   `json:"heading_case,omitempty" binding:"omitempty,oneof=capitalize uppercase"`
 	DatePosition string   `json:"date_position,omitempty" binding:"omitempty,oneof=right below"`
 	Align        string   `json:"align,omitempty" binding:"omitempty,oneof=left center"`        // header text alignment
@@ -69,9 +70,13 @@ func (s *CVStyle) Accents(target string) bool {
 // SectionKeys are the sections of a resume, in the default order. Extra sections follow as "extra:N".
 var SectionKeys = []string{"summary", "education", "experience", "projects", "skills", "certifications", "languages"}
 
-// SectionOrder returns every section present in the content once, in the order the user chose: the keys of
-// content.SectionOrder first (unknown or repeated ones dropped), then the remaining sections in the default order.
+// SectionOrder returns every visible section once, in the order the user chose: the keys of content.SectionOrder
+// first (unknown or repeated ones dropped), then the remaining sections in the default order. Hidden sections are left out.
 func (c ResumeContent) SectionOrder() []string {
+	hidden := map[string]bool{}
+	for _, k := range c.HiddenSections {
+		hidden[k] = true
+	}
 	all := append([]string(nil), SectionKeys...)
 	for i := range c.Extra {
 		all = append(all, "extra:"+strconv.Itoa(i))
@@ -83,13 +88,13 @@ func (c ResumeContent) SectionOrder() []string {
 	seen := map[string]bool{}
 	out := make([]string, 0, len(all))
 	for _, k := range c.SectionOrderKeys {
-		if known[k] && !seen[k] {
+		if known[k] && !seen[k] && !hidden[k] {
 			seen[k] = true
 			out = append(out, k)
 		}
 	}
 	for _, k := range all {
-		if !seen[k] {
+		if !seen[k] && !hidden[k] {
 			out = append(out, k)
 		}
 	}
