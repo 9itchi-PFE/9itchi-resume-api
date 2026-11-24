@@ -130,6 +130,7 @@ type cv struct {
 	body    float64 // pt
 	x, w    float64 // column, mm
 	pending []seg   // left side of the next row, set by the row's left callback
+	locCol  rgb     // color of locations
 	lang    string
 }
 
@@ -161,22 +162,55 @@ func (d *cv) para(text string, size float64) {
 }
 
 // row writes left text and right text on one line; the left text wraps before the right one.
+// metaPart is a piece of a row's right text; loc pieces are locations folded into the dates.
+type metaPart struct {
+	text string
+	loc  bool
+}
+
+func metaParts(s string) []metaPart {
+	var out []metaPart
+	for i, p := range strings.Split(s, locMark) {
+		if p != "" {
+			out = append(out, metaPart{cleanText(p), i%2 == 1})
+		}
+	}
+	return out
+}
+
+// metaDraw writes the pieces one after the other from x, locations in their own color, and returns the width.
+func (d *cv) metaDraw(parts []metaPart, right func(), x, y, size float64) {
+	for _, p := range parts {
+		right()
+		if p.loc {
+			d.pdf.SetTextColor(d.locCol.r, d.locCol.g, d.locCol.b)
+		}
+		w := d.pdf.GetStringWidth(p.text)
+		d.pdf.SetXY(x, y)
+		d.pdf.CellFormat(w, d.lh(size), p.text, "", 0, "L", false, 0, "")
+		x += w
+	}
+}
+
 func (d *cv) row(left, right func(), rightText string, size float64) {
 	pdf := d.pdf
-	if d.lk.dateBelow && strings.TrimSpace(rightText) != "" {
+	parts := metaParts(rightText)
+	if d.lk.dateBelow && len(parts) > 0 {
 		d.row(left, right, "", size)
-		right()
-		pdf.SetX(d.x)
-		pdf.CellFormat(d.w, d.lh(size), cleanText(rightText), "", 1, "L", false, 0, "")
+		y := pdf.GetY()
+		d.metaDraw(parts, right, d.x, y, size)
+		pdf.SetXY(d.x, y+d.lh(size))
 		return
 	}
 	y := pdf.GetY()
 	rw := 0.0
-	if strings.TrimSpace(rightText) != "" {
+	if len(parts) > 0 {
 		right()
-		rw = pdf.GetStringWidth(cleanText(rightText)) + 2
-		pdf.SetXY(d.x+d.w-rw, y)
-		pdf.CellFormat(rw, d.lh(size), cleanText(rightText), "", 0, "R", false, 0, "")
+		for _, p := range parts {
+			rw += pdf.GetStringWidth(p.text)
+		}
+		d.metaDraw(parts, right, d.x+d.w-rw, y, size)
+		rw += 2
 	}
 	pdf.SetXY(d.x, y)
 	left()
@@ -364,6 +398,10 @@ var bodyFonts = map[string]fontFiles4{
 	"lato":       {"Lato-Regular.ttf", "Lato-Italic.ttf", "Lato-Bold.ttf", "Lato-Bold.ttf"},
 	"carlito":    {"Carlito-Regular.ttf", "Carlito-Italic.ttf", "Carlito-Bold.ttf", "Carlito-Bold.ttf"},
 	"tinos":      {"Tinos-Regular.ttf", "Tinos-Italic.ttf", "Tinos-Bold.ttf", "Tinos-Bold.ttf"},
+	"amiri":      {"Amiri-Regular.ttf", "Amiri-Italic.ttf", "Amiri-Bold.ttf", "Amiri-Bold.ttf"},
+	"ptsans":     {"PT_Sans-Web-Regular.ttf", "PT_Sans-Web-Italic.ttf", "PT_Sans-Web-Bold.ttf", "PT_Sans-Web-Bold.ttf"},
+	"ptserif":    {"PT_Serif-Web-Regular.ttf", "PT_Serif-Web-Italic.ttf", "PT_Serif-Web-Bold.ttf", "PT_Serif-Web-Bold.ttf"},
+	"crimson":    {"CrimsonText-Regular.ttf", "CrimsonText-Italic.ttf", "CrimsonText-Bold.ttf", "CrimsonText-Bold.ttf"},
 }
 
 func bodyFontKey(s *api.CVStyle) string {
@@ -398,7 +436,7 @@ func (pdfExporter) Render(ctx context.Context, c api.ResumeContent, layout strin
 	if !ok {
 		titles = headings["fr"]
 	}
-	d := &cv{pdf: pdf, c: visibleEntries(c), titles: titles, lk: newLook(layout, c.Style), lang: opts.Language}
+	d := &cv{pdf: pdf, c: visibleEntriesMark(c, true), titles: titles, lk: newLook(layout, c.Style), lang: opts.Language}
 	if !d.lk.showPhoto {
 		opts.Photo = nil
 	}
@@ -495,13 +533,15 @@ func (d *cv) classic(opts RenderOptions) {
 	}
 	b, eb := d.body, lk.entry
 	ink := lk.ink(cvInk)
-	entry := lk.col("entry_title", cvBlue)
-	bold := func(t string) seg { return seg{text: t, family: sans, style: "B", col: ink} }
-	plain := func(t string) seg { return seg{text: t, family: sans, style: pick(lk.subStyle, ""), col: ink} }
-	accented := func(t string) seg { return seg{text: t, family: sans, style: pick(lk.subStyle, ""), col: entry} }
-	dateCol := lk.col("dates", ink)
-	rightPlain := func() { d.font(sans, pick(lk.dateStyle, ""), eb, dateCol) }
-	rightBold := func() { d.font(sans, pick(lk.dateStyle, "B"), eb, dateCol) }
+	d.locCol = lk.col("location", ink)
+	bold := func(t string) seg { return seg{text: t, family: sans, style: "B", col: lk.col("entry_title", ink)} }
+	label := func(t string) seg { return seg{text: t, family: sans, style: "B", col: ink} }
+	plain := func(t string) seg { return seg{text: t, family: sans, style: pick(lk.subStyle, ""), col: lk.col("subtitle", ink)} }
+	accented := func(t string) seg { return seg{text: t, family: sans, style: pick(lk.subStyle, ""), col: lk.col("subtitle", cvBlue)} }
+	rightPlain := func() { d.font(sans, pick(lk.dateStyle, ""), eb, lk.col("dates", ink)) }
+	rightBold := func() { d.font(sans, pick(lk.dateStyle, "B"), eb, lk.col("dates", ink)) }
+	rightLoc := func() { d.font(sans, pick(lk.dateStyle, ""), eb, d.locCol) }
+	rightOther := func() { d.font(sans, pick(lk.dateStyle, ""), eb, ink) }
 	between := func() { pdf.Ln(lk.gapOr(1)) }
 
 	sections := map[string]func(){
@@ -523,7 +563,7 @@ func (d *cv) classic(opts RenderOptions) {
 				}
 				d.row(d.segs(linked(bold(e.Degree), e.URL)), rightPlain, dates(e.Start, e.End), eb)
 				if e.School != "" || e.Location != "" {
-					d.row(d.segs(plain(e.School)), rightPlain, e.Location, eb)
+					d.row(d.segs(plain(e.School)), rightLoc, e.Location, eb)
 				}
 			}
 		},
@@ -542,7 +582,7 @@ func (d *cv) classic(opts RenderOptions) {
 					if e.Kind != "" {
 						parts = append(parts, plain(" ("+e.Kind+")"))
 					}
-					d.row(d.segs(parts...), rightPlain, e.Location, eb)
+					d.row(d.segs(parts...), rightLoc, e.Location, eb)
 				}
 				d.bullets(e.Description, b, ink)
 			}
@@ -575,7 +615,7 @@ func (d *cv) classic(opts RenderOptions) {
 			head(d.titles["languages"])
 			for _, l := range d.c.Languages {
 				name, level := splitLanguage(l)
-				d.row(d.segs(bold(name)), rightPlain, level, eb)
+				d.row(d.segs(label(name)), rightOther, level, eb)
 			}
 		},
 	}
@@ -705,7 +745,7 @@ func (d *cv) modern(opts RenderOptions) {
 		pad   = 7.0
 	)
 	top, mainP := lk.my, lk.mx
-	side := lk.col("rules", cvNavy)
+	side := lk.colKeep("rules", cvNavy)
 	d.body = lk.base
 	pdf.SetHeaderFunc(func() {
 		if lk.bg != nil {
@@ -810,7 +850,9 @@ func (d *cv) modern(opts RenderOptions) {
 		pdf.Ln(0.4)
 	}
 	bold := func(t string) seg { return seg{text: t, family: sans, style: "B", col: lk.col("entry_title", ink)} }
+	d.locCol = lk.col("location", cvMuted)
 	muted := func(t string) seg { return seg{text: t, family: sans, style: pick(lk.subStyle, ""), col: cvMuted} }
+	locSeg := func(t string) seg { return seg{text: t, family: sans, style: pick(lk.subStyle, ""), col: d.locCol} }
 	right := func() { d.font(sans, pick(lk.dateStyle, ""), eb, lk.col("dates", cvMuted)) }
 	between := func() { pdf.Ln(lk.gapOr(0.8)) }
 	mainSections := map[string]func(){
@@ -829,7 +871,7 @@ func (d *cv) modern(opts RenderOptions) {
 			for _, e := range d.c.Education {
 				d.row(d.segs(linked(bold(join(" — ", e.School, e.Degree)), e.URL)), right, dates(e.Start, e.End), eb)
 				if e.Location != "" {
-					d.row(d.segs(muted(e.Location)), right, "", eb)
+					d.row(d.segs(locSeg(e.Location)), right, "", eb)
 				}
 				between()
 			}
@@ -841,8 +883,15 @@ func (d *cv) modern(opts RenderOptions) {
 			head(d.titles["experience"])
 			for _, e := range d.c.Experience {
 				d.row(d.segs(linked(bold(join(" — ", e.Title, e.Company)), e.URL)), right, dates(e.Start, e.End), eb)
-				if l := join(" · ", e.Kind, e.Location); l != "" {
-					d.row(d.segs(muted(l)), right, "", eb)
+				if e.Kind != "" || e.Location != "" {
+					var parts []seg
+					if e.Kind != "" {
+						parts = append(parts, muted(e.Kind))
+					}
+					if e.Location != "" {
+						parts = append(parts, locSeg(prefix(" · ", e.Kind)+e.Location))
+					}
+					d.row(d.segs(parts...), right, "", eb)
 				}
 				d.bullets(e.Description, b, ink)
 				between()
@@ -949,7 +998,9 @@ func (d *cv) compact(opts RenderOptions) {
 		pdf.Ln(1)
 	}
 	bold := func(t string) seg { return seg{text: t, family: sans, style: "B", col: lk.col("entry_title", ink)} }
-	plain := func(t string) seg { return seg{text: t, family: sans, style: pick(lk.subStyle, ""), col: ink} }
+	d.locCol = lk.col("location", ink)
+	plain := func(t string) seg { return seg{text: t, family: sans, style: pick(lk.subStyle, ""), col: lk.col("subtitle", ink)} }
+	locSeg := func(t string) seg { return seg{text: t, family: sans, style: pick(lk.subStyle, ""), col: d.locCol} }
 	right := func() { d.font(sans, pick(lk.dateStyle, ""), eb, lk.col("dates", ink)) }
 	sections := map[string]func(){
 		"summary": func() {
@@ -974,7 +1025,7 @@ func (d *cv) compact(opts RenderOptions) {
 			}
 			head(d.titles["experience"])
 			for _, e := range d.c.Experience {
-				d.row(d.segs(linked(bold(join(" : ", e.Company, e.Title)), e.URL), plain(prefix(", ", e.Location))), right, dates(e.Start, e.End), eb)
+				d.row(d.segs(linked(bold(join(" : ", e.Company, e.Title)), e.URL), locSeg(prefix(", ", e.Location))), right, dates(e.Start, e.End), eb)
 				d.bullets(e.Description, b, ink)
 				pdf.Ln(lk.gapOr(0))
 			}

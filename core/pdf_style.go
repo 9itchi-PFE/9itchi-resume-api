@@ -168,8 +168,23 @@ func newLook(layout string, s *api.CVStyle) look {
 	return l
 }
 
-// col is the color of target: the accent when the user picked one for it, else the template's native color.
+// col is the color of target: the accent when the user picked it. Once an accent is set, a spot that was not picked
+// loses the template's own accent (blue or navy) and falls back to the ink, like in the preview.
 func (l look) col(target string, native rgb) rgb {
+	if l.accent == nil {
+		return native
+	}
+	if l.style.Accents(target) {
+		return *l.accent
+	}
+	if native == cvBlue || native == cvNavy {
+		return cvInk
+	}
+	return native
+}
+
+// colKeep is col for a fill that has no neutral color (the modern side column): the template color stays unless picked.
+func (l look) colKeep(target string, native rgb) rgb {
 	if l.accent != nil && l.style.Accents(target) {
 		return *l.accent
 	}

@@ -170,8 +170,10 @@ func docBodyFont(s *api.CVStyle) string {
 	switch bodyFontKey(s) {
 	case "lato":
 		return "Lato"
-	case "tinos":
+	case "tinos", "ptserif", "crimson":
 		return "Times New Roman"
+	case "amiri":
+		return "Amiri"
 	}
 	return "Calibri"
 }

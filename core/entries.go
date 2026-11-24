@@ -7,8 +7,14 @@ import (
 	"9itchi-resume-api/models/api"
 )
 
+// locMark wraps a location folded into the dates so the PDF can color the two apart; it is invisible and never printed.
+const locMark = "\u2063"
+
 // visibleEntries drops the entries the user hid; they stay in the stored content.
-func visibleEntries(c api.ResumeContent) api.ResumeContent {
+func visibleEntries(c api.ResumeContent) api.ResumeContent { return visibleEntriesMark(c, false) }
+
+// visibleEntriesMark is visibleEntries; with mark the folded locations are wrapped in locMark.
+func visibleEntriesMark(c api.ResumeContent, mark bool) api.ResumeContent {
 	c.Experience = keep(c.Experience, func(e api.Experience) bool { return !e.Hidden })
 	c.Education = keep(c.Education, func(e api.Education) bool { return !e.Hidden })
 	c.Projects = keep(c.Projects, func(p api.Project) bool { return !p.Hidden })
@@ -21,14 +27,14 @@ func visibleEntries(c api.ResumeContent) api.ResumeContent {
 		e.Description = plainAll(e.Description)
 		e.Title, e.Company, e.Kind, e.Location = plain(e.Title), plain(e.Company), plain(e.Kind), plain(e.Location)
 		if beside && strings.TrimSpace(e.Location) != "" {
-			e.Start, e.End, e.Location = metaText(e.Start, e.End, e.Location, order), "", ""
+			e.Start, e.End, e.Location = metaText(e.Start, e.End, e.Location, order, mark), "", ""
 		}
 	}
 	for i := range c.Education {
 		e := &c.Education[i]
 		e.School, e.Degree, e.Location = plain(e.School), plain(e.Degree), plain(e.Location)
 		if beside && strings.TrimSpace(e.Location) != "" {
-			e.Start, e.End, e.Location = metaText(e.Start, e.End, e.Location, order), "", ""
+			e.Start, e.End, e.Location = metaText(e.Start, e.End, e.Location, order, mark), "", ""
 		}
 	}
 	for i := range c.Projects {
@@ -39,7 +45,7 @@ func visibleEntries(c api.ResumeContent) api.ResumeContent {
 		if beside {
 			loc = strings.TrimSpace(p.Location)
 		}
-		if r := metaText(p.Start, p.End, loc, order); r != "" {
+		if r := metaText(p.Start, p.End, loc, order, mark); r != "" {
 			p.Year = r
 		}
 	}
@@ -50,10 +56,13 @@ func visibleEntries(c api.ResumeContent) api.ResumeContent {
 }
 
 // metaText is the right-hand text of an entry: its dates and, when given, the location beside them; mirrors the client's metaText.
-func metaText(start, end, loc string, locationFirst bool) string {
+func metaText(start, end, loc string, locationFirst, mark bool) string {
 	dates := join(" — ", start, end)
 	if strings.TrimSpace(loc) == "" {
 		return dates
+	}
+	if mark {
+		loc = locMark + strings.TrimSpace(loc) + locMark
 	}
 	if locationFirst {
 		return join(" · ", loc, dates)

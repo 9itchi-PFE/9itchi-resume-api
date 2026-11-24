@@ -19,7 +19,7 @@ type CVStyle struct {
 	MarginX      float64  `json:"margin_x,omitempty" binding:"omitempty,min=5,max=30"`     // left and right, mm
 	MarginY      float64  `json:"margin_y,omitempty" binding:"omitempty,min=5,max=30"`     // top and bottom, mm
 	NameFont     string   `json:"name_font,omitempty" binding:"omitempty,oneof=sans serif"`
-	BodyFont     string   `json:"body_font,omitempty" binding:"omitempty,oneof=sourcesans lato carlito tinos"` // applies to all body text
+	BodyFont     string   `json:"body_font,omitempty" binding:"omitempty,oneof=sourcesans lato carlito tinos amiri ptsans ptserif crimson"` // applies to all body text
 	HeadingBold  *bool    `json:"heading_bold,omitempty"`
 	HeadingCase  string   `json:"heading_case,omitempty" binding:"omitempty,oneof=capitalize uppercase"`
 	DatePosition string   `json:"date_position,omitempty" binding:"omitempty,oneof=right below"`
@@ -38,7 +38,7 @@ type CVStyle struct {
 	Accent       string   `json:"accent,omitempty" binding:"omitempty,max=7"`
 	Text         string   `json:"text,omitempty" binding:"omitempty,max=7"`
 	Background   string   `json:"background,omitempty" binding:"omitempty,max=7"`
-	AccentOn     []string `json:"accent_on,omitempty" binding:"max=8,dive,oneof=name title headings rules dates entry_title links"`
+	AccentOn     []string `json:"accent_on" binding:"max=10,dive,oneof=name title headings rules dates location entry_title subtitle links"` // nil: the template defaults; empty: nothing
 	ShowPhoto    *bool    `json:"show_photo,omitempty"`
 }
 
@@ -58,7 +58,7 @@ func (s *CVStyle) Valid() bool {
 }
 
 // defaultAccentTargets are what the accent color paints when AccentOn is empty: the template's own accent spots.
-var defaultAccentTargets = []string{"title", "headings", "rules", "entry_title", "links"}
+var defaultAccentTargets = []string{"title", "headings", "rules", "entry_title", "subtitle", "links"}
 
 // Accents reports whether the accent color applies to target.
 func (s *CVStyle) Accents(target string) bool {
@@ -66,7 +66,7 @@ func (s *CVStyle) Accents(target string) bool {
 		return false
 	}
 	list := s.AccentOn
-	if len(list) == 0 {
+	if list == nil {
 		list = defaultAccentTargets
 	}
 	for _, t := range list {
