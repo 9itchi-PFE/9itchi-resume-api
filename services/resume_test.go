@@ -462,3 +462,51 @@ func TestInternalResumeOriginal(t *testing.T) {
 	require.NotNil(t, apiErr)
 	assert.Equal(t, http.StatusInternalServerError, apiErr.Code)
 }
+
+type firstEvents struct {
+	names    []string
+	payloads []any
+	err      error
+}
+
+func (f *firstEvents) Publish(_ context.Context, name string, payload any) error {
+	f.names, f.payloads = append(f.names, name), append(f.payloads, payload)
+	return f.err
+}
+
+// A student's first imported CV is announced once; a second CV, a failed count or a failed publish say nothing
+// more and never fail the import.
+func TestFirstCVIsAnnounced(t *testing.T) {
+	events := &firstEvents{}
+	resumes, files := &mocks.ResumeRepo{}, &mocks.FileRepo{}
+	count := 1
+	var countErr error
+	resumes.CreateFn = func(_ context.Context, userID, ti string, _ *string, content []byte) (*db.Resume, error) {
+		return &db.Resume{ID: rid, UserID: userID, Title: ti, Content: content}, nil
+	}
+	resumes.CountByUserFn = func(context.Context, string) (int, error) { return count, countErr }
+	files.CreateFn = func(_ context.Context, f *db.ResumeFile) (*db.ResumeFileMeta, error) {
+		return &db.ResumeFileMeta{ID: "f-1", ResumeID: f.ResumeID}, nil
+	}
+	svc := NewResumeService(resumes, &mocks.TemplateRepo{}, files, mocks.Tx{}, core.DefaultExporters(), WithEvents(events))
+	upload := func() {
+		_, apiErr := svc.UploadResume(context.Background(), uid, "cv.pdf", int64(len(pdfBytes())), bytes.NewReader(pdfBytes()))
+		require.Nil(t, apiErr)
+	}
+
+	upload()
+	require.Equal(t, []string{core.EventCVFirstImported}, events.names)
+	assert.Equal(t, map[string]any{"user_id": uid}, events.payloads[0], "nothing but who")
+
+	count = 2
+	upload()
+	assert.Len(t, events.names, 1, "a second CV is not a first")
+
+	count, countErr = 1, assert.AnError
+	upload()
+	assert.Len(t, events.names, 1, "an unknown count announces nothing")
+
+	countErr, events.err = nil, assert.AnError
+	upload()
+	assert.Len(t, events.names, 2, "a publish that fails does not fail the import")
+}

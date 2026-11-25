@@ -12,6 +12,8 @@ import (
 const (
 	// EventCVTips: the check of a student's CV still finds points to correct (once a week at most).
 	EventCVTips = "cv.tips"
+	// EventCVFirstImported: a student imported their first CV (once per student, unless they delete it and start again).
+	EventCVFirstImported = "cv.first_imported"
 )
 
 // Publisher sends domain events.

@@ -86,6 +86,8 @@ type resumeService struct {
 	parser core.ResumeParser
 	// quotas enforces the plan limits (payments-api); nil means no limits (tests, local runs without payments).
 	quotas core.QuotaSource
+	// events announces a student's first CV; nil announces nothing (tests, local runs).
+	events core.Publisher
 	// async runs background work; tests replace it to run synchronously.
 	async func(func())
 }
@@ -98,6 +100,9 @@ func WithParser(p core.ResumeParser) Option { return func(s *resumeService) { s.
 
 // WithQuotas enables plan limits: CVs, downloads per period and the groups of the diagnosis shown.
 func WithQuotas(q core.QuotaSource) Option { return func(s *resumeService) { s.quotas = q } }
+
+// WithEvents sets where the service announces a student's first CV.
+func WithEvents(p core.Publisher) Option { return func(s *resumeService) { s.events = p } }
 
 func NewResumeService(
 	repo repositories.ResumeRepository,
@@ -236,6 +241,7 @@ func (s *resumeService) UploadResume(ctx context.Context, userID string, filenam
 	if err != nil {
 		return nil, repoError(err, "resume not found")
 	}
+	s.announceFirst(ctx, userID)
 	if s.parser != nil {
 		if err := s.repo.SetParseStatus(ctx, resume.ID, db.ParsePending); err != nil {
 			utils.Logger.Error("upload: mark pending", zap.Error(err))
@@ -601,6 +607,21 @@ func (s *resumeService) InternalResumeOriginal(ctx context.Context, id string) (
 		return nil, newError(http.StatusNotFound, "imported file not found")
 	}
 	return &api.FileContent{Filename: f.Filename, ContentType: f.ContentType, Data: f.Data}, nil
+}
+
+// announceFirst publishes cv.first_imported when the CV just imported is the student's only one: the step « first
+// CV » of the statistics. Nothing but the id of the student travels, and a failure only loses that figure.
+func (s *resumeService) announceFirst(ctx context.Context, userID string) {
+	if s.events == nil {
+		return
+	}
+	n, err := s.repo.CountByUser(ctx, userID)
+	if err != nil || n != 1 {
+		return
+	}
+	if err := s.events.Publish(ctx, core.EventCVFirstImported, map[string]any{"user_id": userID}); err != nil {
+		utils.Logger.Warn("publish event", zap.String("event", core.EventCVFirstImported), zap.Error(err))
+	}
 }
 
 func exportContentType(format string) string {
