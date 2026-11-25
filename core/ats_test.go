@@ -190,3 +190,28 @@ func TestProjectsAndSkillGroupsAreChecked(t *testing.T) {
 	out = CheckATS(ATSInput{Content: c, Language: "fr", ExportFilename: "ines_mansour.pdf"})
 	assert.Equal(t, RuleOK, findRule(out, "relevant_skills").Status, "grouped skills count")
 }
+
+func TestLockGroups(t *testing.T) {
+	res := api.ATSCheckResponse{Passed: 1, Total: 3, ToFix: 2, Rules: []api.ATSRuleResult{
+		{ID: "summary", Group: "summary", Status: RuleOK},
+		{ID: "action_verbs", Group: "experience", Status: RuleFix, ATSFinding: api.ATSFinding{Where: "experience[0].description[0]", Was: "Responsable de…"}},
+		{ID: "one_page", Group: "layout", Status: RuleFix},
+	}}
+	q := &Quotas{Limits: map[string]int{"ats_experience": 0, "ats_layout": 2, "ats_unknown": 0}}
+	out := LockGroups(res, q.Shows)
+	assert.Equal(t, []string{"experience"}, out.LockedGroups)
+	assert.Equal(t, api.ATSRuleResult{ID: "action_verbs", Group: "experience", Status: RuleLocked}, out.Rules[1])
+	assert.Equal(t, res.Rules[0], out.Rules[0])
+	assert.Equal(t, res.Rules[2], out.Rules[2], "a key above 0 shows the group")
+	assert.Equal(t, 2, out.ToFix, "the totals stay those of the whole CV")
+	assert.Equal(t, "Responsable de…", res.Rules[1].Was, "the full result is left as it was")
+
+	var none *Quotas
+	open := LockGroups(res, none.Shows)
+	assert.Equal(t, []string{}, open.LockedGroups)
+	assert.Equal(t, res.Rules, open.Rules)
+	assert.True(t, (&Quotas{Limits: map[string]int{}}).Shows("layout"), "no key: shown")
+	for _, g := range ruleGroups {
+		assert.Contains(t, ATSGroups, g)
+	}
+}

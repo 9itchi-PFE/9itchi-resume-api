@@ -20,7 +20,36 @@ const (
 	RuleOK  = "ok"
 	RuleFix = "fix"
 	RuleTip = "tip"
+	// RuleLocked: the student's plan does not show this rule; nothing is said of how the CV does on it.
+	RuleLocked = "locked"
 )
+
+// ATSGroups lists the groups of the diagnosis, in screen order.
+var ATSGroups = []string{"contact", "summary", "experience", "education", "skills", "layout", "file"}
+
+// LockGroups hides the rules of the groups a plan does not show: their status becomes "locked" and what they
+// found is removed. The totals stay those of the whole CV, so the student knows how much is left to see.
+func LockGroups(res api.ATSCheckResponse, shows func(group string) bool) api.ATSCheckResponse {
+	locked := []string{}
+	for _, g := range ATSGroups {
+		if !shows(g) {
+			locked = append(locked, g)
+		}
+	}
+	res.LockedGroups = locked
+	if len(locked) == 0 {
+		return res
+	}
+	rules := make([]api.ATSRuleResult, len(res.Rules))
+	for i, r := range res.Rules {
+		if !shows(r.Group) {
+			r = api.ATSRuleResult{ID: r.ID, Group: r.Group, Status: RuleLocked}
+		}
+		rules[i] = r
+	}
+	res.Rules = rules
+	return res
+}
 
 // ATSInput is what the 24 rules look at.
 type ATSInput struct {

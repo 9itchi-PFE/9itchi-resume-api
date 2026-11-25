@@ -160,12 +160,38 @@ func TestGetResumeSaysWhetherThereIsAPhoto(t *testing.T) {
 
 func TestDownloads(t *testing.T) {
 	f := newFixture()
-	f.files.CountExportsByUserFn = func(context.Context, string) (int, error) { return 2, nil }
+	f.files.CountExportsByUserFn = func(_ context.Context, _ string, since *time.Time) (int, error) {
+		assert.Nil(t, since)
+		return 2, nil
+	}
 	d, apiErr := f.svc.Downloads(context.Background(), uid)
 	require.Nil(t, apiErr)
 	assert.Equal(t, 2, d.Used)
-	f.files.CountExportsByUserFn = func(context.Context, string) (int, error) { return 0, assert.AnError }
+	assert.Nil(t, d.Limit, "no plan to read: no limit known")
+	f.files.CountExportsByUserFn = func(context.Context, string, *time.Time) (int, error) { return 0, assert.AnError }
 	_, apiErr = f.svc.Downloads(context.Background(), uid)
 	require.NotNil(t, apiErr)
 	assert.Equal(t, http.StatusInternalServerError, apiErr.Code)
+
+	start := time.Date(2026, 11, 1, 9, 0, 0, 0, time.UTC)
+	paid, _ := newSprint2Fixture(WithQuotas(fakeQuotas{q: &core.Quotas{PlanName: "Mensuel", Limits: map[string]int{"cv_downloads": 5}, PeriodStart: &start}}))
+	paid.files.CountExportsByUserFn = func(_ context.Context, _ string, since *time.Time) (int, error) {
+		require.NotNil(t, since)
+		assert.Equal(t, start, *since)
+		return 1, nil
+	}
+	d, apiErr = paid.svc.Downloads(context.Background(), uid)
+	require.Nil(t, apiErr)
+	assert.Equal(t, 1, d.Used)
+	assert.Equal(t, 5, *d.Limit)
+
+	none, _ := newSprint2Fixture(WithQuotas(fakeQuotas{q: &core.Quotas{PlanName: "Free", Limits: map[string]int{"cv_downloads": 0}}}))
+	d, apiErr = none.svc.Downloads(context.Background(), uid)
+	require.Nil(t, apiErr)
+	assert.Equal(t, 0, *d.Limit, "no download without a subscription")
+
+	down, _ := newSprint2Fixture(WithQuotas(fakeQuotas{err: core.ErrPeerUnavailable}))
+	_, apiErr = down.svc.Downloads(context.Background(), uid)
+	require.NotNil(t, apiErr)
+	assert.Equal(t, http.StatusServiceUnavailable, apiErr.Code)
 }

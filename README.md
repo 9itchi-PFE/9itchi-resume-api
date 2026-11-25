@@ -26,7 +26,7 @@ Port `8082`, health `/health`. All endpoints are implemented.
 | POST | `/resumes/:id/ats-check` | user | ATSCheck (the 24 CV rules) |
 | GET | `/internal/resumes/:id/pdf` | internal | InternalResumePDF |
 | POST | `/internal/tips/send` | internal | SendTips: `{"sent": N, "failed": N}` |
-| GET | `/me/downloads` | user | Downloads (`{"used"}`) |
+| GET | `/me/downloads` | user | Downloads (`{"used", "limit"}`: downloads in the current period of the subscription and what the plan allows; `limit` is null without a limit, 0 without a subscription) |
 | GET | `/templates` | user | ListTemplates |
 | GET | `/templates/:id` | user | GetTemplate |
 | POST | `/admin/templates` | admin | CreateTemplate |
@@ -82,3 +82,13 @@ Broker tests: `RABBITMQ_TEST_URL=amqp://guest:guest@localhost:5672/ go test -tag
 go test ./...
 go test -tags integration -count=1 ./repositories/...   # embedded PostgreSQL, ~1 min
 ```
+
+## What a plan allows (no free download)
+
+A student with no subscription writes and checks their CV but cannot download it; a plan sets how many downloads a period of the subscription allows and which groups of the diagnosis are shown. The limits come from payments-api (`GET /internal/quotas/:userId`, with `period_start`):
+
+- `cv_downloads`: downloads per period. `0` refuses every download with 402 (`subscription required to download your CV`); a number is counted from `period_start` and refused beyond it with 402 (`download limit of your plan reached for this period`); no key means no limit.
+- `ats_<group>` set to `0` hides a group of the diagnosis (`contact`, `summary`, `experience`, `education`, `skills`, `layout`, `file`). `POST /resumes/:id/ats-check` then returns the rules of that group with `status: "locked"` and nothing of what they found, and lists the group in `locked_groups`. `passed`, `total` and `to_fix` still count the whole CV. No key shows the group.
+- `resumes`: how many CVs (unchanged).
+
+When payments-api cannot be reached, downloads and the diagnosis answer 503 rather than show what the plan may not allow. The CV sent with an application (`/internal/resumes/:id/pdf`) is not a download.
