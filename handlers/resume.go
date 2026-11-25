@@ -195,6 +195,18 @@ func InternalResumePDF(svc services.ResumeService) gin.HandlerFunc {
 	}
 }
 
+// InternalResumeOriginal: GET /internal/resumes/:id/original (internal) the file the student imported, as it came.
+func InternalResumeOriginal(svc services.ResumeService) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		result, apiErr := svc.InternalResumeOriginal(c.Request.Context(), c.Param("id"))
+		if apiErr != nil {
+			models.FormatError(c, apiErr)
+			return
+		}
+		sendFile(c, result)
+	}
+}
+
 // GetVersion: GET /resumes/:id/versions/:versionId (user) one saved version with its content.
 func GetVersion(svc services.ResumeService) gin.HandlerFunc {
 	return func(c *gin.Context) {

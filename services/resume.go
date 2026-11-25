@@ -72,6 +72,8 @@ type ResumeService interface {
 	Downloads(ctx context.Context, userID string) (*api.DownloadsResponse, *models.ApiError)
 	// GET /internal/resumes/:id/pdf: the CV as it is now, rendered as a PDF (email attachments), no user scoping
 	InternalResumePDF(ctx context.Context, id string) (*api.FileContent, *models.ApiError)
+	// GET /internal/resumes/:id/original (internal): the file the student imported, untouched
+	InternalResumeOriginal(ctx context.Context, id string) (*api.FileContent, *models.ApiError)
 }
 
 type resumeService struct {
@@ -583,6 +585,22 @@ func (s *resumeService) InternalResumePDF(ctx context.Context, id string) (*api.
 		return nil, apiErr
 	}
 	return &api.FileContent{Filename: exportFilename(content.Contact.Name, res.Title) + ".pdf", ContentType: contentTypePDF, Data: data}, nil
+}
+
+// InternalResumeOriginal returns the file the student imported for this CV, byte for byte: an application sent
+// without a subscription carries it, not the CV built in 9itchi. 404 when the CV was not started from a file.
+func (s *resumeService) InternalResumeOriginal(ctx context.Context, id string) (*api.FileContent, *models.ApiError) {
+	if !isUUID(id) {
+		return nil, newError(http.StatusBadRequest, "invalid resume id")
+	}
+	f, err := s.files.Original(ctx, id)
+	if err != nil {
+		return nil, repoError(err, "imported file not found")
+	}
+	if f == nil {
+		return nil, newError(http.StatusNotFound, "imported file not found")
+	}
+	return &api.FileContent{Filename: f.Filename, ContentType: f.ContentType, Data: f.Data}, nil
 }
 
 func exportContentType(format string) string {

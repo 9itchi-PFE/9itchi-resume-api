@@ -196,6 +196,12 @@ func TestFileBlobRoundtripAndMetadataOnly(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, []byte("two"), latest.Data)
 
+	// the imported file comes back as it was stored, and the exports never stand in for it
+	orig, err := files.Original(ctx, r.ID)
+	require.NoError(t, err)
+	assert.Equal(t, meta.ID, orig.ID)
+	assert.Equal(t, data, orig.Data)
+
 	// wrong resume id cannot read another resume's file
 	other, err := resumes.Create(ctx, userB, "other", nil, []byte(`{}`))
 	require.NoError(t, err)
