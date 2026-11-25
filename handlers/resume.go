@@ -312,3 +312,15 @@ func Downloads(svc services.ResumeService) gin.HandlerFunc {
 		c.JSON(http.StatusOK, result)
 	}
 }
+
+// UserCV: GET /admin/users/:id/cv (admin) where the CV of one student stands with the 24 rules.
+func UserCV(svc services.ResumeService) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		result, apiErr := svc.UserCV(c.Request.Context(), c.Param("id"))
+		if apiErr != nil {
+			models.FormatError(c, apiErr)
+			return
+		}
+		c.JSON(http.StatusOK, result)
+	}
+}

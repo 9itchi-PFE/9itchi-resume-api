@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"9itchi-resume-api/core"
 	"9itchi-resume-api/models/api"
@@ -385,6 +386,51 @@ func TestInternalResumePDF(t *testing.T) {
 }
 
 func ptr[T any](v T) *T { return &v }
+
+func TestUserCVForTheTeam(t *testing.T) {
+	f := newFixture()
+	updated := time.Date(2026, 11, 20, 9, 0, 0, 0, time.UTC)
+	f.resumes.ListFn = func(_ context.Context, userID string, limit, offset int) ([]db.ResumeSummary, int, error) {
+		require.Equal(t, 1, limit, "only the CV changed last is read")
+		if userID != uid {
+			return nil, 0, nil
+		}
+		return []db.ResumeSummary{{ID: rid, Title: "CV principal"}}, 2, nil
+	}
+	f.resumes.GetFn = func(_ context.Context, userID, id string) (*db.Resume, error) {
+		return &db.Resume{ID: id, UserID: userID, Title: "CV principal", Version: 3, UpdatedAt: updated,
+			Content: []byte(`{"contact":{"name":"Ines Mansour","email":"i@x.tn","location":"Sfax"}}`)}, nil
+	}
+
+	res, apiErr := f.svc.UserCV(context.Background(), strings.ToUpper(uid))
+	require.Nil(t, apiErr)
+	assert.Equal(t, rid, res.ResumeID)
+	assert.Equal(t, "CV principal", res.Title)
+	assert.Equal(t, 2, res.Resumes)
+	assert.Equal(t, 3, res.Version)
+	assert.Equal(t, 24, res.Total)
+	// The same figures as the student's own check of that CV.
+	own, apiErr := f.svc.ATSCheck(context.Background(), uid, rid, api.ATSCheckRequest{})
+	require.Nil(t, apiErr)
+	assert.Equal(t, own.Passed, res.Passed)
+	assert.Equal(t, own.ToFix, res.ToFix)
+	assert.Positive(t, res.ToFix)
+	assert.Equal(t, updated, res.UpdatedAt)
+
+	// A student without a CV, a bad id, a database error.
+	_, apiErr = f.svc.UserCV(context.Background(), "99999999-9999-4999-8999-999999999999")
+	require.NotNil(t, apiErr)
+	assert.Equal(t, http.StatusNotFound, apiErr.Code)
+	_, apiErr = f.svc.UserCV(context.Background(), "nope")
+	require.NotNil(t, apiErr)
+	assert.Equal(t, http.StatusBadRequest, apiErr.Code)
+	f.resumes.ListFn = func(context.Context, string, int, int) ([]db.ResumeSummary, int, error) {
+		return nil, 0, errors.New("db down")
+	}
+	_, apiErr = f.svc.UserCV(context.Background(), uid)
+	require.NotNil(t, apiErr)
+	assert.Equal(t, http.StatusInternalServerError, apiErr.Code)
+}
 
 func TestInternalResumeOriginal(t *testing.T) {
 	f := newFixture()

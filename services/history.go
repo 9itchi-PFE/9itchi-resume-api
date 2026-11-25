@@ -7,7 +7,9 @@ import (
 	"encoding/hex"
 	"io"
 	"net/http"
+	"time"
 
+	"9itchi-resume-api/core"
 	"9itchi-resume-api/models"
 	"9itchi-resume-api/models/api"
 	"9itchi-resume-api/models/db"
@@ -169,9 +171,22 @@ func (s *resumeService) response(ctx context.Context, res *db.Resume) *api.Resum
 }
 
 func (s *resumeService) Downloads(ctx context.Context, userID string) (*api.DownloadsResponse, *models.ApiError) {
-	n, err := s.files.CountExportsByUser(ctx, userID)
+	q, apiErr := s.plan(ctx, userID)
+	if apiErr != nil {
+		return nil, apiErr
+	}
+	var since *time.Time
+	out := &api.DownloadsResponse{}
+	if q != nil {
+		since = q.PeriodStart
+		if limit, ok := q.Limits[core.QuotaCVDownloads]; ok {
+			out.Limit = &limit
+		}
+	}
+	n, err := s.files.CountExportsByUser(ctx, userID, since)
 	if err != nil {
 		return nil, repoError(err, "not found")
 	}
-	return &api.DownloadsResponse{Used: n}, nil
+	out.Used = n
+	return out, nil
 }
