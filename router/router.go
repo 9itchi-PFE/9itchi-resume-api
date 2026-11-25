@@ -34,6 +34,7 @@ func initializeRoutes(r *gin.Engine, services *services.Services) {
 		userGroup.DELETE("/resumes/:id", handlers.DeleteResume(services.Resume))
 		userGroup.GET("/resumes/:id/versions", handlers.ListVersions(services.Resume))
 		userGroup.POST("/resumes/:id/versions", handlers.CreateVersion(services.Resume))
+		userGroup.POST("/resumes/:id/rewrite", handlers.Rewrite(services.Rewrite))
 		userGroup.GET("/resumes/:id/versions/:versionId", handlers.GetVersion(services.Resume))
 		userGroup.POST("/resumes/:id/versions/:versionId/restore", handlers.RestoreVersion(services.Resume))
 		userGroup.POST("/resumes/:id/duplicate", handlers.DuplicateResume(services.Resume))

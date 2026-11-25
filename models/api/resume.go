@@ -289,3 +289,18 @@ type UserCVResponse struct {
 	ToFix     int       `json:"to_fix"`
 	UpdatedAt time.Time `json:"updated_at"`
 }
+
+// RewriteRequest is the body of POST /resumes/:id/rewrite: one line of the CV, or its summary, to rewrite.
+type RewriteRequest struct {
+	Section  string `json:"section" binding:"required,oneof=bullet summary"`
+	Text     string `json:"text" binding:"required,max=2000"`
+	Language string `json:"language" binding:"omitempty,oneof=fr en ar"`
+	JobTitle string `json:"job_title" binding:"max=200"`
+}
+
+// RewriteResponse is what the AI proposes, with what is left of the plan's rewrites this month (Limit nil: no limit).
+type RewriteResponse struct {
+	Suggestions []string `json:"suggestions"`
+	Limit       *int     `json:"limit"`
+	Used        int      `json:"used"`
+}
