@@ -385,3 +385,34 @@ func TestInternalResumePDF(t *testing.T) {
 }
 
 func ptr[T any](v T) *T { return &v }
+
+func TestInternalResumeOriginal(t *testing.T) {
+	f := newFixture()
+	_, apiErr := f.svc.InternalResumeOriginal(context.Background(), "nope")
+	require.NotNil(t, apiErr)
+	assert.Equal(t, http.StatusBadRequest, apiErr.Code)
+
+	// A CV that was not started from a file has nothing to send as it came.
+	_, apiErr = f.svc.InternalResumeOriginal(context.Background(), rid)
+	require.NotNil(t, apiErr)
+	assert.Equal(t, http.StatusNotFound, apiErr.Code)
+
+	f.files.OriginalFn = func(_ context.Context, id string) (*db.ResumeFile, error) {
+		assert.Equal(t, rid, id)
+		return &db.ResumeFile{Filename: "cv-ines.pdf", ContentType: "application/pdf", Data: []byte("%PDF-as-imported")}, nil
+	}
+	f.resumes.GetByIDFn = func(context.Context, string) (*db.Resume, error) {
+		t.Fatal("the imported file is returned as it came, the CV built in 9itchi is not read")
+		return nil, nil
+	}
+	got, apiErr := f.svc.InternalResumeOriginal(context.Background(), rid)
+	require.Nil(t, apiErr)
+	assert.Equal(t, "cv-ines.pdf", got.Filename)
+	assert.Equal(t, "application/pdf", got.ContentType)
+	assert.Equal(t, []byte("%PDF-as-imported"), got.Data)
+
+	f.files.OriginalFn = func(context.Context, string) (*db.ResumeFile, error) { return nil, assert.AnError }
+	_, apiErr = f.svc.InternalResumeOriginal(context.Background(), rid)
+	require.NotNil(t, apiErr)
+	assert.Equal(t, http.StatusInternalServerError, apiErr.Code)
+}

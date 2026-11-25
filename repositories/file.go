@@ -21,6 +21,9 @@ type FileRepository interface {
 	Delete(ctx context.Context, resumeID, fileID string) error
 	// LatestExport returns the newest kind=export file of the given format, including its blob.
 	LatestExport(ctx context.Context, resumeID, format string) (*db.ResumeFile, error)
+	// Original returns the file the student imported for this CV, including its blob (ErrNotFound when the CV
+	// was not started from a file).
+	Original(ctx context.Context, resumeID string) (*db.ResumeFile, error)
 	// CountExportsByUser counts the user's downloads (free download quota); deleting a CV does not reset it.
 	CountExportsByUser(ctx context.Context, userID string) (int, error)
 	// LatestPhoto returns the CV photo with its blob (ErrNotFound when none).
@@ -102,6 +105,20 @@ func (r *fileRepository) LatestExport(ctx context.Context, resumeID, format stri
 		`SELECT `+fileMetaColumns+`, data, updated_at FROM resume_files
 		 WHERE resume_id = $1 AND kind = 'export' AND format = $2
 		 ORDER BY created_at DESC LIMIT 1`, resumeID, format)
+	if err != nil {
+		return nil, MapError(err)
+	}
+	f, err := pgx.CollectOneRow(rows, pgx.RowToAddrOfStructByName[db.ResumeFile])
+	return f, MapError(err)
+}
+
+func (r *fileRepository) Original(ctx context.Context, resumeID string) (*db.ResumeFile, error) {
+	ctx, cancel := QueryTimeout(ctx)
+	defer cancel()
+	rows, err := r.store.Conn(ctx).Query(ctx,
+		`SELECT `+fileMetaColumns+`, data, updated_at FROM resume_files
+		 WHERE resume_id = $1 AND kind = 'original'
+		 ORDER BY created_at DESC LIMIT 1`, resumeID)
 	if err != nil {
 		return nil, MapError(err)
 	}

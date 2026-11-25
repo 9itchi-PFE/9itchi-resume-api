@@ -180,6 +180,7 @@ type FileRepo struct {
 	GetFn                func(ctx context.Context, resumeID, fileID string) (*db.ResumeFile, error)
 	DeleteFn             func(ctx context.Context, resumeID, fileID string) error
 	LatestExportFn       func(ctx context.Context, resumeID, format string) (*db.ResumeFile, error)
+	OriginalFn           func(ctx context.Context, resumeID string) (*db.ResumeFile, error)
 	CountExportsByUserFn func(ctx context.Context, userID string) (int, error)
 	RecordDownloadFn     func(ctx context.Context, userID, resumeID, format string) error
 	LatestPhotoFn        func(ctx context.Context, resumeID string) (*db.ResumeFile, error)
@@ -257,6 +258,13 @@ func (m *FileRepo) LatestExport(ctx context.Context, resumeID, format string) (*
 		return nil, repositories.ErrNotFound
 	}
 	return m.LatestExportFn(ctx, resumeID, format)
+}
+
+func (m *FileRepo) Original(ctx context.Context, resumeID string) (*db.ResumeFile, error) {
+	if m.OriginalFn == nil {
+		return nil, repositories.ErrNotFound
+	}
+	return m.OriginalFn(ctx, resumeID)
 }
 
 // TipRepo is a mock of repositories.TipRepository. It records who was released.

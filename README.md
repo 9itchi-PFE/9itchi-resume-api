@@ -25,6 +25,7 @@ Port `8082`, health `/health`. All endpoints are implemented.
 | POST | `/resumes/:id/export` | user | ExportResume |
 | POST | `/resumes/:id/ats-check` | user | ATSCheck (the 24 CV rules) |
 | GET | `/internal/resumes/:id/pdf` | internal | InternalResumePDF |
+| GET | `/internal/resumes/:id/original` | internal | InternalResumeOriginal |
 | POST | `/internal/tips/send` | internal | SendTips: `{"sent": N, "failed": N}` |
 | GET | `/me/downloads` | user | Downloads (`{"used"}`) |
 | GET | `/templates` | user | ListTemplates |
@@ -57,6 +58,7 @@ go run main.go
 - Files: `GET /resumes/:id/files` (metadata only), `GET /resumes/:id/files/:fileId` (attachment download), `DELETE` returns `204`.
 - `POST /resumes/:id/export` body `{"format":"pdf"|"docx"}` renders the CV with its template's layout and stores it as a `kind=export` file named `prenom_nom.pdf|docx`. The three layouts follow screen 4.3: `classic` (Source Sans 3, round photo, blue small-caps headline, blue uppercase titles over a rule), `modern` (dark `#1F2A44` side column with photo, contact, skills and languages; Source Serif 4 titles) and `compact` (black and white, centred name, never a photo). The PDF embeds Latin subsets of Source Sans 3 / Source Serif 4 (SIL OFL, `core/fonts`); characters outside them print as `?`. The Word file keeps the same layout with Calibri/Cambria and is for subscribers only (`402` on the free plan). Headings are French, English for English CVs. Unknown formats return `400`. Exporters are registered in `core.DefaultExporters()`.
 - `GET /internal/resumes/:id/pdf` (`x-api-key`) renders the CV as it is now (template, language, photo) and returns the PDF; `404` when the resume does not exist. Nothing is stored and it is not counted as a download, so an application always carries the current CV.
+- `GET /internal/resumes/:id/original` (`x-api-key`) returns the file the student imported for this CV, byte for byte, with its own name and type (PDF or DOCX); `404` when the CV was not started from a file. An application sent without a subscription carries this file.
 - Templates: 3 seeded (classic, modern, compact); admins create/edit/deactivate; `GET /templates` lists active ones.
 
 ## CV tips (sprint 6)

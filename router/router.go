@@ -63,6 +63,7 @@ func initializeRoutes(r *gin.Engine, services *services.Services) {
 	internalGroup.Use(InternalAPIKeyMiddleware())
 	{
 		internalGroup.GET("/internal/resumes/:id/pdf", handlers.InternalResumePDF(services.Resume))
+		internalGroup.GET("/internal/resumes/:id/original", handlers.InternalResumeOriginal(services.Resume))
 		internalGroup.POST("/internal/tips/send", handlers.SendTips(services.Tip))
 	}
 

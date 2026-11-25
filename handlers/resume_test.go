@@ -45,6 +45,10 @@ func (s *stubResumeSvc) InternalResumePDF(context.Context, string) (*api.FileCon
 	return s.pdf()
 }
 
+func (s *stubResumeSvc) InternalResumeOriginal(context.Context, string) (*api.FileContent, *models.ApiError) {
+	return s.pdf()
+}
+
 func (s *stubResumeSvc) ATSCheck(_ context.Context, _, _ string, req api.ATSCheckRequest) (*api.ATSCheckResponse, *models.ApiError) {
 	s.atsReq = req
 	return &api.ATSCheckResponse{Passed: 23, Total: 24, ToFix: 1, Rules: []api.ATSRuleResult{}}, nil
@@ -218,4 +222,24 @@ func TestATSCheckHandler(t *testing.T) {
 	req.Header.Set("Content-Type", "application/json")
 	r.ServeHTTP(w, req)
 	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestInternalResumeOriginalHandler(t *testing.T) {
+	svc := &stubResumeSvc{pdf: func() (*api.FileContent, *models.ApiError) {
+		return &api.FileContent{Filename: "mon cv.docx", ContentType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", Data: []byte("PK")}, nil
+	}}
+	r := newRouter(InternalResumeOriginal(svc), http.MethodGet, "/internal/resumes/:id/original")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/internal/resumes/x/original", nil))
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "application/vnd.openxmlformats-officedocument.wordprocessingml.document", w.Header().Get("Content-Type"))
+	assert.Equal(t, `attachment; filename="mon cv.docx"`, w.Header().Get("Content-Disposition"))
+	assert.Equal(t, "PK", w.Body.String())
+
+	svc.pdf = func() (*api.FileContent, *models.ApiError) {
+		return nil, &models.ApiError{Code: http.StatusNotFound, Error: assert.AnError}
+	}
+	w = httptest.NewRecorder()
+	r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/internal/resumes/x/original", nil))
+	assert.Equal(t, http.StatusNotFound, w.Code)
 }
