@@ -36,14 +36,15 @@ func (s *resumeService) lockedSet(ctx context.Context, userID string) (map[strin
 	}
 	edit, hasEdit := q.Limits[core.QuotaCVEdit]
 	limit, hasLimit := q.Limits[core.QuotaResumes]
-	if !(hasEdit && edit <= 0) && !hasLimit {
+	noEdit := hasEdit && edit <= 0
+	if !noEdit && !hasLimit {
 		return nil, nil
 	}
 	ids, err := s.repo.EditableOrder(ctx, userID)
 	if err != nil {
 		return nil, repoError(err, "resume not found")
 	}
-	if hasEdit && edit <= 0 {
+	if noEdit {
 		locked := make(map[string]string, len(ids))
 		for _, id := range ids {
 			locked[id] = LockedBySubscription
