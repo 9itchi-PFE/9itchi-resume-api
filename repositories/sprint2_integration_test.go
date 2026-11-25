@@ -115,6 +115,17 @@ func TestCountsForQuotas(t *testing.T) {
 	require.NoError(t, resumes.Delete(ctx, u1, a.ID))
 	n, _ = files.CountExportsByUser(ctx, u1, nil)
 	assert.Equal(t, 2, n, "deleting a CV does not give a download back")
+
+	// For the team: how many, and when the last one was; nothing for a student who never downloaded.
+	n, last, err := files.LastExportByUser(ctx, u1)
+	require.NoError(t, err)
+	assert.Equal(t, 2, n)
+	require.NotNil(t, last)
+	assert.WithinDuration(t, time.Now(), *last, time.Minute)
+	n, last, err = files.LastExportByUser(ctx, "99999999-9999-4999-8999-999999999999")
+	require.NoError(t, err)
+	assert.Equal(t, 0, n)
+	assert.Nil(t, last)
 }
 
 func TestVersionsAndPhotos(t *testing.T) {

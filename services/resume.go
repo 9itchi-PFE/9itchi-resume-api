@@ -56,6 +56,8 @@ type ResumeService interface {
 	ATSCheck(ctx context.Context, userID string, id string, req api.ATSCheckRequest) (*api.ATSCheckResponse, *models.ApiError)
 	// GET /admin/users/:id/cv: where the CV a student changed last stands with the 24 rules, for the team
 	UserCV(ctx context.Context, id string) (*api.UserCVResponse, *models.ApiError)
+	// UserDownloads is how many CV downloads a student made and when the last one was (admin).
+	UserDownloads(ctx context.Context, id string) (*api.UserDownloadsResponse, *models.ApiError)
 	// GET /resumes/:id/versions/:versionId: one saved version with its content
 	GetVersion(ctx context.Context, userID, id, versionID string) (*api.VersionContentResponse, *models.ApiError)
 	// POST /resumes/:id/versions/:versionId/restore: put a saved version back (the replaced content is saved first)
@@ -509,6 +511,19 @@ func (s *resumeService) UserCV(ctx context.Context, id string) (*api.UserCVRespo
 		ResumeID: res.ID, Title: res.Title, Resumes: total, Version: res.Version,
 		Passed: check.Passed, Total: check.Total, ToFix: check.ToFix, UpdatedAt: res.UpdatedAt,
 	}, nil
+}
+
+// UserDownloads tells the team whether a student downloaded a CV and when they last did: a download made after a
+// payment means the payment was used. A student with no download gets zero, not an error.
+func (s *resumeService) UserDownloads(ctx context.Context, id string) (*api.UserDownloadsResponse, *models.ApiError) {
+	if !isUUID(id) {
+		return nil, newError(http.StatusBadRequest, "invalid user id")
+	}
+	n, last, err := s.files.LastExportByUser(ctx, strings.ToLower(id))
+	if err != nil {
+		return nil, repoError(err, "not found")
+	}
+	return &api.UserDownloadsResponse{Count: n, LastAt: last}, nil
 }
 
 // checkResume runs the 24 rules on a CV as it is now, rendered with its template. targetLanguage is the language
