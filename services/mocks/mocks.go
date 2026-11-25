@@ -180,7 +180,7 @@ type FileRepo struct {
 	GetFn                func(ctx context.Context, resumeID, fileID string) (*db.ResumeFile, error)
 	DeleteFn             func(ctx context.Context, resumeID, fileID string) error
 	LatestExportFn       func(ctx context.Context, resumeID, format string) (*db.ResumeFile, error)
-	CountExportsByUserFn func(ctx context.Context, userID string) (int, error)
+	CountExportsByUserFn func(ctx context.Context, userID string, since *time.Time) (int, error)
 	RecordDownloadFn     func(ctx context.Context, userID, resumeID, format string) error
 	LatestPhotoFn        func(ctx context.Context, resumeID string) (*db.ResumeFile, error)
 	HasPhotoFn           func(ctx context.Context, resumeID string) (bool, error)
@@ -215,11 +215,11 @@ func (m *FileRepo) RecordDownload(ctx context.Context, userID, resumeID, format 
 	return m.RecordDownloadFn(ctx, userID, resumeID, format)
 }
 
-func (m *FileRepo) CountExportsByUser(ctx context.Context, userID string) (int, error) {
+func (m *FileRepo) CountExportsByUser(ctx context.Context, userID string, since *time.Time) (int, error) {
 	if m.CountExportsByUserFn == nil {
 		return 0, nil
 	}
-	return m.CountExportsByUserFn(ctx, userID)
+	return m.CountExportsByUserFn(ctx, userID, since)
 }
 
 var _ repositories.FileRepository = (*FileRepo)(nil)

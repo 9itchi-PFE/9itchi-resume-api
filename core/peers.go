@@ -3,6 +3,7 @@ package core
 import (
 	"context"
 	"errors"
+	"time"
 
 	"9itchi-resume-api/models/api"
 )
@@ -28,16 +29,32 @@ type ResumeParser interface {
 type Quotas struct {
 	PlanName string
 	Limits   map[string]int
+	// PeriodStart is when the current period of the subscription began; nil without a subscription. Limits "per
+	// period" (downloads) count from there.
+	PeriodStart *time.Time
 }
 
-// FreePlanName is payments-api's fallback plan; exports on it carry the 9itchi mark.
+// FreePlanName is payments-api's plan of a student with no subscription: no download, and only a part of the
+// diagnosis. An export on it, should its limits ever allow one, carries the 9itchi mark.
 const FreePlanName = "Free"
 
 // Quota keys shared with payments-api.
 const (
-	QuotaResumes     = "resumes"
+	QuotaResumes = "resumes"
+	// QuotaCVDownloads is how many times a CV can be downloaded in a period of the subscription (0: never).
 	QuotaCVDownloads = "cv_downloads"
+	// QuotaATSPrefix + a group of the diagnosis (ats_experience, ats_layout...) set to 0 hides that group.
+	QuotaATSPrefix = "ats_"
 )
+
+// Shows says whether the plan shows a group of the diagnosis: hidden only when its key is 0.
+func (q *Quotas) Shows(group string) bool {
+	if q == nil {
+		return true
+	}
+	limit, set := q.Limits[QuotaATSPrefix+group]
+	return !set || limit != 0
+}
 
 // QuotaSource reads the user's plan quotas.
 type QuotaSource interface {

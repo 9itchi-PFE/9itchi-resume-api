@@ -14,13 +14,15 @@ func TestQuotas(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, "/internal/quotas/u-1", r.URL.Path)
 		assert.Equal(t, "secret", r.Header.Get("x-api-key"))
-		_, _ = w.Write([]byte(`{"user_id":"u-1","plan_id":"p","plan_name":"Free","quotas":{"resumes":1,"cv_downloads":1}}`))
+		_, _ = w.Write([]byte(`{"user_id":"u-1","plan_id":"p","plan_name":"Free","quotas":{"resumes":1,"cv_downloads":1},"period_start":"2026-11-01T09:00:00Z"}`))
 	}))
 	defer srv.Close()
 	q, err := New(srv.URL, "secret").Quotas(context.Background(), "u-1")
 	require.NoError(t, err)
 	assert.Equal(t, "Free", q.PlanName)
 	assert.Equal(t, map[string]int{"resumes": 1, "cv_downloads": 1}, q.Limits)
+	require.NotNil(t, q.PeriodStart)
+	assert.Equal(t, "2026-11-01T09:00:00Z", q.PeriodStart.Format("2006-01-02T15:04:05Z"))
 }
 
 func TestQuotasErrors(t *testing.T) {

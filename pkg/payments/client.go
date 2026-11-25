@@ -47,8 +47,9 @@ func (c *Client) Quotas(ctx context.Context, userID string) (*core.Quotas, error
 		return nil, fmt.Errorf("payments quotas: status %d", resp.StatusCode)
 	}
 	var out struct {
-		PlanName string         `json:"plan_name"`
-		Quotas   map[string]int `json:"quotas"`
+		PlanName    string         `json:"plan_name"`
+		Quotas      map[string]int `json:"quotas"`
+		PeriodStart *time.Time     `json:"period_start"`
 	}
 	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&out); err != nil {
 		return nil, fmt.Errorf("payments quotas: decode: %w", err)
@@ -56,5 +57,5 @@ func (c *Client) Quotas(ctx context.Context, userID string) (*core.Quotas, error
 	if out.Quotas == nil {
 		out.Quotas = map[string]int{}
 	}
-	return &core.Quotas{PlanName: out.PlanName, Limits: out.Quotas}, nil
+	return &core.Quotas{PlanName: out.PlanName, Limits: out.Quotas, PeriodStart: out.PeriodStart}, nil
 }

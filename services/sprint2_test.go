@@ -7,6 +7,7 @@ import (
 	"errors"
 	"net/http"
 	"testing"
+	"time"
 
 	"9itchi-resume-api/core"
 	"9itchi-resume-api/models/api"
@@ -185,12 +186,16 @@ func TestFreePlanAllowsOneCV(t *testing.T) {
 }
 
 func TestDownloadQuotaAndBranding(t *testing.T) {
+	var since *time.Time
 	setup := func(q core.QuotaSource, exports int) (*fixture, *[]byte) {
 		f, _ := newSprint2Fixture(WithQuotas(q))
 		f.resumes.GetFn = func(_ context.Context, _, id string) (*db.Resume, error) {
 			return &db.Resume{ID: id, Title: "Mon CV", Content: []byte(`{"contact":{"name":"Inès Ben Mansour"}}`)}, nil
 		}
-		f.files.CountExportsByUserFn = func(context.Context, string) (int, error) { return exports, nil }
+		f.files.CountExportsByUserFn = func(_ context.Context, _ string, from *time.Time) (int, error) {
+			since = from
+			return exports, nil
+		}
 		var data []byte
 		f.files.CreateFn = func(_ context.Context, fl *db.ResumeFile) (*db.ResumeFileMeta, error) {
 			data = fl.Data
@@ -198,33 +203,41 @@ func TestDownloadQuotaAndBranding(t *testing.T) {
 		}
 		return f, &data
 	}
-	free := fakeQuotas{q: &core.Quotas{PlanName: "Free", Limits: map[string]int{"cv_downloads": 1}}}
 
-	f, data := setup(free, 0)
+	// No subscription: the CV can be written and checked, never downloaded.
+	none := fakeQuotas{q: &core.Quotas{PlanName: "Free", Limits: map[string]int{"cv_downloads": 0}}}
+	for _, format := range []string{"pdf", "docx"} {
+		f, data := setup(none, 0)
+		_, apiErr := f.svc.ExportResume(context.Background(), uid, rid, api.ExportResumeRequest{Format: format})
+		require.NotNil(t, apiErr, format)
+		assert.Equal(t, http.StatusPaymentRequired, apiErr.Code, format)
+		assert.Equal(t, errDownloadNeedsPlan, apiErr.Error.Error(), format)
+		assert.Nil(t, *data, "nothing is rendered or stored")
+	}
+
+	// A plan with 3 downloads per period: counted from the start of the period.
+	start := time.Date(2026, 11, 1, 9, 0, 0, 0, time.UTC)
+	three := fakeQuotas{q: &core.Quotas{PlanName: "Mensuel", Limits: map[string]int{"cv_downloads": 3}, PeriodStart: &start}}
+	f, data := setup(three, 2)
 	res, apiErr := f.svc.ExportResume(context.Background(), uid, rid, api.ExportResumeRequest{Format: "pdf"})
 	require.Nil(t, apiErr)
 	assert.Equal(t, "ines_ben_mansour.pdf", res.Filename, "rule 22: prenom_nom.pdf")
+	require.NotNil(t, since)
+	assert.Equal(t, start, *since, "the downloads of earlier periods do not count")
 	text, err := core.ExtractText("pdf", *data)
 	require.NoError(t, err)
-	assert.Contains(t, text, core.BrandLead, "the free download carries the mark")
+	assert.NotContains(t, text, core.BrandLead, "a subscriber's CV carries no mark")
 
-	f, _ = setup(free, 0)
-	_, apiErr = f.svc.ExportResume(context.Background(), uid, rid, api.ExportResumeRequest{Format: "docx"})
-	require.NotNil(t, apiErr)
-	assert.Equal(t, http.StatusPaymentRequired, apiErr.Code)
-	assert.Equal(t, errWordForSubscribers, apiErr.Error.Error())
-
-	f, _ = setup(free, 1)
+	f, _ = setup(three, 3)
 	_, apiErr = f.svc.ExportResume(context.Background(), uid, rid, api.ExportResumeRequest{Format: "pdf"})
 	require.NotNil(t, apiErr)
 	assert.Equal(t, http.StatusPaymentRequired, apiErr.Code)
 	assert.Equal(t, errDownloadLimit, apiErr.Error.Error())
 
+	// A plan that sets no limit.
 	f, data = setup(fakeQuotas{q: &core.Quotas{PlanName: "Mensuel", Limits: map[string]int{}}}, 12)
 	_, apiErr = f.svc.ExportResume(context.Background(), uid, rid, api.ExportResumeRequest{Format: "pdf"})
 	require.Nil(t, apiErr)
-	text, _ = core.ExtractText("pdf", *data)
-	assert.NotContains(t, text, core.BrandLead)
 	res, apiErr = f.svc.ExportResume(context.Background(), uid, rid, api.ExportResumeRequest{Format: "docx"})
 	require.Nil(t, apiErr, "subscribers get the Word file")
 	assert.Equal(t, "ines_ben_mansour.docx", res.Filename)
@@ -232,10 +245,60 @@ func TestDownloadQuotaAndBranding(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, text, "Inès Ben Mansour")
 
+	// Should the team ever allow a download without a subscription, it is a marked PDF, never a Word file.
+	marked := fakeQuotas{q: &core.Quotas{PlanName: "Free", Limits: map[string]int{"cv_downloads": 1}}}
+	f, data = setup(marked, 0)
+	_, apiErr = f.svc.ExportResume(context.Background(), uid, rid, api.ExportResumeRequest{Format: "pdf"})
+	require.Nil(t, apiErr)
+	text, _ = core.ExtractText("pdf", *data)
+	assert.Contains(t, text, core.BrandLead)
+	f, _ = setup(marked, 0)
+	_, apiErr = f.svc.ExportResume(context.Background(), uid, rid, api.ExportResumeRequest{Format: "docx"})
+	require.NotNil(t, apiErr)
+	assert.Equal(t, errWordForSubscribers, apiErr.Error.Error())
+
 	f, _ = setup(fakeQuotas{err: core.ErrPeerUnavailable}, 0)
 	_, apiErr = f.svc.ExportResume(context.Background(), uid, rid, api.ExportResumeRequest{Format: "pdf"})
 	require.NotNil(t, apiErr)
 	assert.Equal(t, http.StatusServiceUnavailable, apiErr.Code, "fails closed when the plan cannot be checked")
+}
+
+func TestDiagnosisShowsWhatThePlanShows(t *testing.T) {
+	cv := func(f *fixture) {
+		f.resumes.GetFn = func(_ context.Context, _, id string) (*db.Resume, error) {
+			return &db.Resume{ID: id, Title: "Mon CV", Content: []byte(`{"contact":{"name":"Inès Ben Mansour"},"summary":"Je suis motivée."}`)}, nil
+		}
+	}
+	whole, _ := newSprint2Fixture()
+	cv(whole)
+	all, apiErr := whole.svc.ATSCheck(context.Background(), uid, rid, api.ATSCheckRequest{})
+	require.Nil(t, apiErr)
+	assert.Empty(t, all.LockedGroups, "without a plan to read, nothing is hidden")
+
+	limits := map[string]int{"ats_experience": 0, "ats_education": 0, "ats_skills": 0, "ats_layout": 0, "ats_file": 0, "ats_contact": 1}
+	free, _ := newSprint2Fixture(WithQuotas(fakeQuotas{q: &core.Quotas{PlanName: "Free", Limits: limits}}))
+	cv(free)
+	res, apiErr := free.svc.ATSCheck(context.Background(), uid, rid, api.ATSCheckRequest{})
+	require.Nil(t, apiErr)
+	assert.Equal(t, []string{"experience", "education", "skills", "layout", "file"}, res.LockedGroups)
+	assert.Equal(t, all.Total, res.Total)
+	assert.Equal(t, all.ToFix, res.ToFix, "the student still knows how much is left to correct")
+	require.Len(t, res.Rules, len(all.Rules))
+	for i, r := range res.Rules {
+		switch r.Group {
+		case "contact", "summary":
+			assert.Equal(t, all.Rules[i], r, r.ID)
+		default:
+			assert.Equal(t, core.RuleLocked, r.Status, r.ID)
+			assert.Empty(t, r.Where+r.Was+r.Now, "nothing of a hidden rule is sent: "+r.ID)
+		}
+	}
+
+	down, _ := newSprint2Fixture(WithQuotas(fakeQuotas{err: core.ErrPeerUnavailable}))
+	cv(down)
+	_, apiErr = down.svc.ATSCheck(context.Background(), uid, rid, api.ATSCheckRequest{})
+	require.NotNil(t, apiErr)
+	assert.Equal(t, http.StatusServiceUnavailable, apiErr.Code)
 }
 
 func TestExportFilename(t *testing.T) {
