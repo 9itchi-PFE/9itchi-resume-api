@@ -292,6 +292,10 @@ func hasMagic(format string, data []byte) bool {
 }
 
 func (s *resumeService) CreateResume(ctx context.Context, userID string, req api.CreateResumeRequest) (*api.ResumeResponse, *models.ApiError) {
+	// A CV written in 9itchi needs the right to edit it; without it the student imports the CV they have.
+	if !s.canEdit(ctx, userID) {
+		return nil, newError(http.StatusPaymentRequired, errEditNeedsPlan)
+	}
 	if _, apiErr := s.checkResumeQuota(ctx, userID); apiErr != nil {
 		return nil, apiErr
 	}
@@ -336,7 +340,8 @@ func (s *resumeService) ListResumes(ctx context.Context, userID string, page, pa
 	}
 	for _, r := range rows {
 		item := mapping.ResumeSummaryToItem(r)
-		item.Locked = locked[r.ID]
+		item.LockedReason = locked[r.ID]
+		item.Locked = item.LockedReason != ""
 		out.Items = append(out.Items, item)
 	}
 	return out, nil
@@ -355,7 +360,8 @@ func (s *resumeService) GetResume(ctx context.Context, userID string, id string)
 	if apiErr != nil {
 		return nil, apiErr
 	}
-	resp.Locked = locked[id]
+	resp.LockedReason = locked[id]
+	resp.Locked = resp.LockedReason != ""
 	return resp, nil
 }
 

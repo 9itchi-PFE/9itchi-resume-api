@@ -12,13 +12,20 @@ import (
 	"go.uber.org/zap"
 )
 
-const errResumeLocked = "subscribe to edit your other CVs"
+const (
+	errResumeLocked  = "subscribe to edit your other CVs"
+	errEditNeedsPlan = "editing your CV is part of the subscription"
+	// Reasons a CV is read-only.
+	LockedBySubscription = "subscription"
+	LockedByLimit        = "limit"
+)
 
-// lockedSet returns the user's CVs that are beyond the plan's CV limit, or nil when none is. Nothing is deleted:
-// the first ones in EditableOrder (the chosen CV, then the last modified) stay editable, at least one; the
-// others are read-only until the plan allows them again. When the plan cannot be read, nothing is locked: a
-// student keeps editing while payments-api is down.
-func (s *resumeService) lockedSet(ctx context.Context, userID string) (map[string]bool, *models.ApiError) {
+// lockedSet returns the user's read-only CVs with the reason, or nil when none is. Nothing is deleted. A plan with
+// cv_edit = 0 (no subscription) makes every CV read-only. Otherwise, beyond the plan's CV limit, the first ones in
+// EditableOrder (the chosen CV, then the last modified) stay editable, at least one; the others are read-only
+// until the plan allows them again. When the plan cannot be read, nothing is locked: a student keeps editing while
+// payments-api is down.
+func (s *resumeService) lockedSet(ctx context.Context, userID string) (map[string]string, *models.ApiError) {
 	if s.quotas == nil {
 		return nil, nil
 	}
@@ -27,23 +34,46 @@ func (s *resumeService) lockedSet(ctx context.Context, userID string) (map[strin
 		utils.Logger.Warn("quotas for the CV lock, nothing locked", zap.Error(err))
 		return nil, nil
 	}
-	limit, ok := q.Limits[core.QuotaResumes]
-	if !ok {
+	edit, hasEdit := q.Limits[core.QuotaCVEdit]
+	limit, hasLimit := q.Limits[core.QuotaResumes]
+	noEdit := hasEdit && edit <= 0
+	if !noEdit && !hasLimit {
 		return nil, nil
 	}
-	limit = max(limit, 1)
 	ids, err := s.repo.EditableOrder(ctx, userID)
 	if err != nil {
 		return nil, repoError(err, "resume not found")
 	}
+	if noEdit {
+		locked := make(map[string]string, len(ids))
+		for _, id := range ids {
+			locked[id] = LockedBySubscription
+		}
+		return locked, nil
+	}
+	limit = max(limit, 1)
 	if len(ids) <= limit {
 		return nil, nil
 	}
-	locked := make(map[string]bool, len(ids)-limit)
+	locked := make(map[string]string, len(ids)-limit)
 	for _, id := range ids[limit:] {
-		locked[id] = true
+		locked[id] = LockedByLimit
 	}
 	return locked, nil
+}
+
+// canEdit says whether the plan lets the student edit CVs at all (false for cv_edit = 0). An unreadable plan
+// lets them.
+func (s *resumeService) canEdit(ctx context.Context, userID string) bool {
+	if s.quotas == nil {
+		return true
+	}
+	q, err := s.quotas.Quotas(ctx, userID)
+	if err != nil {
+		return true
+	}
+	edit, ok := q.Limits[core.QuotaCVEdit]
+	return !ok || edit > 0
 }
 
 // checkEditable refuses a change to a locked CV with 402.
@@ -52,16 +82,23 @@ func (s *resumeService) checkEditable(ctx context.Context, userID, id string) *m
 	if apiErr != nil {
 		return apiErr
 	}
-	if locked[id] {
+	switch locked[id] {
+	case LockedBySubscription:
+		return newError(http.StatusPaymentRequired, errEditNeedsPlan)
+	case LockedByLimit:
 		return newError(http.StatusPaymentRequired, errResumeLocked)
 	}
 	return nil
 }
 
-// ChooseEditable makes this CV the one the student keeps editing beyond the plan's CV limit.
+// ChooseEditable makes this CV the one the student keeps editing beyond the plan's CV limit. Without the right to
+// edit at all, there is nothing to choose (402).
 func (s *resumeService) ChooseEditable(ctx context.Context, userID, id string) (*api.ResumeResponse, *models.ApiError) {
 	if !isUUID(id) {
 		return nil, newError(http.StatusBadRequest, "invalid resume id")
+	}
+	if !s.canEdit(ctx, userID) {
+		return nil, newError(http.StatusPaymentRequired, errEditNeedsPlan)
 	}
 	if err := s.repo.Pin(ctx, userID, id); err != nil {
 		return nil, repoError(err, "resume not found")

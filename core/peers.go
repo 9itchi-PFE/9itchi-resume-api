@@ -48,6 +48,9 @@ const (
 	// QuotaAIRewrites is the monthly limit of AI rewrites of a CV line or of the summary (absent: no limit; 0:
 	// none). A rewrite of the same text, given back again, is not counted.
 	QuotaAIRewrites = "ai_rewrites_per_month"
+	// QuotaCVEdit set to 0 makes every CV read-only: it is imported and read, not edited in 9itchi (no
+	// subscription, decided 25 Nov. 2026).
+	QuotaCVEdit = "cv_edit"
 )
 
 // RewriteInput is one line (or the summary) of a CV to rewrite, for an offer when JobTitle is set.

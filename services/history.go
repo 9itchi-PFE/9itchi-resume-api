@@ -80,6 +80,9 @@ func (s *resumeService) DuplicateResume(ctx context.Context, userID, id string, 
 	if apiErr := validateTitle(req.Title); apiErr != nil {
 		return nil, apiErr
 	}
+	if !s.canEdit(ctx, userID) {
+		return nil, newError(http.StatusPaymentRequired, errEditNeedsPlan)
+	}
 	src, err := s.repo.Get(ctx, userID, id)
 	if err != nil {
 		return nil, repoError(err, "resume not found")
