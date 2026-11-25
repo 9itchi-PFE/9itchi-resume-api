@@ -2,6 +2,7 @@ package repositories
 
 import (
 	"context"
+	"time"
 
 	"9itchi-resume-api/models/db"
 
@@ -21,8 +22,8 @@ type FileRepository interface {
 	Delete(ctx context.Context, resumeID, fileID string) error
 	// LatestExport returns the newest kind=export file of the given format, including its blob.
 	LatestExport(ctx context.Context, resumeID, format string) (*db.ResumeFile, error)
-	// CountExportsByUser counts the user's downloads (free download quota); deleting a CV does not reset it.
-	CountExportsByUser(ctx context.Context, userID string) (int, error)
+	// CountExportsByUser counts the user's downloads since a time (nil: ever); deleting a CV does not reset it.
+	CountExportsByUser(ctx context.Context, userID string, since *time.Time) (int, error)
 	// LatestPhoto returns the CV photo with its blob (ErrNotFound when none).
 	LatestPhoto(ctx context.Context, resumeID string) (*db.ResumeFile, error)
 	// HasPhoto reports whether the CV has a photo, without reading the blob.
@@ -109,11 +110,12 @@ func (r *fileRepository) LatestExport(ctx context.Context, resumeID, format stri
 	return f, MapError(err)
 }
 
-func (r *fileRepository) CountExportsByUser(ctx context.Context, userID string) (int, error) {
+func (r *fileRepository) CountExportsByUser(ctx context.Context, userID string, since *time.Time) (int, error) {
 	ctx, cancel := QueryTimeout(ctx)
 	defer cancel()
 	var n int
-	err := r.store.Conn(ctx).QueryRow(ctx, `SELECT count(*) FROM resume_downloads WHERE user_id = $1`, userID).Scan(&n)
+	err := r.store.Conn(ctx).QueryRow(ctx,
+		`SELECT count(*) FROM resume_downloads WHERE user_id = $1 AND ($2::timestamptz IS NULL OR created_at >= $2)`, userID, since).Scan(&n)
 	return n, MapError(err)
 }
 

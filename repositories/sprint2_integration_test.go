@@ -5,6 +5,7 @@ package repositories
 import (
 	"context"
 	"testing"
+	"time"
 
 	"9itchi-resume-api/models/db"
 
@@ -99,13 +100,21 @@ func TestCountsForQuotas(t *testing.T) {
 	add(b.ID, "original")
 	require.NoError(t, files.RecordDownload(ctx, u1, a.ID, "pdf"))
 	require.NoError(t, files.RecordDownload(ctx, u1, b.ID, "pdf"))
-	n, err = files.CountExportsByUser(ctx, u1)
+	n, err = files.CountExportsByUser(ctx, u1, nil)
 	require.NoError(t, err)
 	assert.Equal(t, 2, n)
+	// Counted over a period: what was downloaded before it began does not count.
+	earlier, later := time.Now().Add(-time.Hour), time.Now().Add(time.Hour)
+	n, err = files.CountExportsByUser(ctx, u1, &earlier)
+	require.NoError(t, err)
+	assert.Equal(t, 2, n)
+	n, err = files.CountExportsByUser(ctx, u1, &later)
+	require.NoError(t, err)
+	assert.Equal(t, 0, n)
 
 	require.NoError(t, resumes.Delete(ctx, u1, a.ID))
-	n, _ = files.CountExportsByUser(ctx, u1)
-	assert.Equal(t, 2, n, "deleting a CV does not give the free download back")
+	n, _ = files.CountExportsByUser(ctx, u1, nil)
+	assert.Equal(t, 2, n, "deleting a CV does not give a download back")
 }
 
 func TestVersionsAndPhotos(t *testing.T) {

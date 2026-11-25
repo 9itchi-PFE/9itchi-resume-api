@@ -94,7 +94,7 @@ type Option func(*resumeService)
 // WithParser enables AI reading of uploaded CVs.
 func WithParser(p core.ResumeParser) Option { return func(s *resumeService) { s.parser = p } }
 
-// WithQuotas enables plan limits (1 CV and 1 branded download on the free plan).
+// WithQuotas enables plan limits: CVs, downloads per period and the groups of the diagnosis shown.
 func WithQuotas(q core.QuotaSource) Option { return func(s *resumeService) { s.quotas = q } }
 
 func NewResumeService(
@@ -469,7 +469,12 @@ func (s *resumeService) ATSCheck(ctx context.Context, userID string, id string, 
 	if err != nil {
 		return nil, repoError(err, "resume not found")
 	}
-	out := checkResume(ctx, s.templates, res, req.TargetLanguage)
+	// The plan decides which groups of the diagnosis are shown; when it cannot be read nothing is shown (503).
+	q, apiErr := s.plan(ctx, userID)
+	if apiErr != nil {
+		return nil, apiErr
+	}
+	out := core.LockGroups(checkResume(ctx, s.templates, res, req.TargetLanguage), q.Shows)
 	return &out, nil
 }
 

@@ -213,7 +213,8 @@ type ATSFinding struct {
 	Now   string `json:"now,omitempty"`
 }
 
-// ATSRuleResult is one of the 24 rules: status ok|fix|tip; Where/Was/Now are set on fix (Now also on file_name).
+// ATSRuleResult is one of the 24 rules: status ok|fix|tip, or locked when the student's plan does not show its
+// group; Where/Was/Now are set on fix (Now also on file_name).
 type ATSRuleResult struct {
 	ID     string `json:"id"`
 	Group  string `json:"group"`
@@ -227,6 +228,9 @@ type ATSCheckResponse struct {
 	Total  int             `json:"total"`
 	ToFix  int             `json:"to_fix"`
 	Rules  []ATSRuleResult `json:"rules"`
+	// LockedGroups are the groups the student's plan does not show (their rules are "locked"); Passed, Total and
+	// ToFix still count the whole CV.
+	LockedGroups []string `json:"locked_groups"`
 }
 
 // ParseReport describes the reading of an uploaded CV.
@@ -246,9 +250,11 @@ type VersionContentResponse struct {
 	Content ResumeContent `json:"content"`
 }
 
-// DownloadsResponse says how many CVs the user downloaded, so the client opens the right dialog.
+// DownloadsResponse says how many times the user downloaded a CV in the current period of the subscription (ever,
+// without one) and how many the plan allows: Limit is nil when the plan sets none, 0 when it allows no download.
 type DownloadsResponse struct {
-	Used int `json:"used"`
+	Used  int  `json:"used"`
+	Limit *int `json:"limit"`
 }
 
 // DuplicateResumeRequest is the body of POST /resumes/:id/duplicate.

@@ -20,7 +20,8 @@ import (
 const (
 	errQuotaUnavailable   = "subscription check unavailable, try again"
 	errResumeLimit        = "subscription required for more than one CV"
-	errDownloadLimit      = "subscription required to download your CV again"
+	errDownloadNeedsPlan  = "subscription required to download your CV"
+	errDownloadLimit      = "download limit of your plan reached for this period"
 	errWordForSubscribers = "the Word file is for subscribers"
 )
 
@@ -58,8 +59,9 @@ func (s *resumeService) checkResumeQuota(ctx context.Context, userID string) (*c
 	return q, nil
 }
 
-// checkDownloadQuota enforces the plan's "cv_downloads" limit (402 beyond it) and says whether the
-// export carries the 9itchi mark (free plan).
+// checkDownloadQuota enforces the plan's "cv_downloads" limit, counted over the current period of the
+// subscription: 402 beyond it, and at once when the plan allows no download (a student with no subscription). It
+// also says whether the export carries the 9itchi mark (the plan of a student with no subscription).
 func (s *resumeService) checkDownloadQuota(ctx context.Context, userID string) (branded bool, apiErr *models.ApiError) {
 	if os.Getenv("UNLIMITED_DOWNLOADS") == "true" { // test environments: no plan limit on exports
 		return false, nil
@@ -73,7 +75,10 @@ func (s *resumeService) checkDownloadQuota(ctx context.Context, userID string) (
 	if !ok {
 		return branded, nil
 	}
-	n, err := s.files.CountExportsByUser(ctx, userID)
+	if limit <= 0 {
+		return false, newError(http.StatusPaymentRequired, errDownloadNeedsPlan)
+	}
+	n, err := s.files.CountExportsByUser(ctx, userID, q.PeriodStart)
 	if err != nil {
 		return false, repoError(err, "resume not found")
 	}
