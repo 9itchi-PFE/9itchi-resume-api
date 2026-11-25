@@ -387,6 +387,33 @@ func TestInternalResumePDF(t *testing.T) {
 
 func ptr[T any](v T) *T { return &v }
 
+func TestUserDownloadsForTheTeam(t *testing.T) {
+	f := newFixture()
+	last := time.Date(2026, 11, 24, 18, 30, 0, 0, time.UTC)
+	f.files.LastExportByUserFn = func(_ context.Context, userID string) (int, *time.Time, error) {
+		if userID != uid {
+			return 0, nil, nil
+		}
+		return 3, &last, nil
+	}
+	res, apiErr := f.svc.UserDownloads(context.Background(), strings.ToUpper(uid))
+	require.Nil(t, apiErr)
+	assert.Equal(t, &api.UserDownloadsResponse{Count: 3, LastAt: &last}, res)
+
+	res, apiErr = f.svc.UserDownloads(context.Background(), "99999999-9999-4999-8999-999999999999")
+	require.Nil(t, apiErr, "no download is an answer, not an error")
+	assert.Equal(t, &api.UserDownloadsResponse{}, res)
+
+	_, apiErr = f.svc.UserDownloads(context.Background(), "nope")
+	require.NotNil(t, apiErr)
+	assert.Equal(t, http.StatusBadRequest, apiErr.Code)
+
+	f.files.LastExportByUserFn = func(context.Context, string) (int, *time.Time, error) { return 0, nil, errors.New("db down") }
+	_, apiErr = f.svc.UserDownloads(context.Background(), uid)
+	require.NotNil(t, apiErr)
+	assert.Equal(t, http.StatusInternalServerError, apiErr.Code)
+}
+
 func TestUserCVForTheTeam(t *testing.T) {
 	f := newFixture()
 	updated := time.Date(2026, 11, 20, 9, 0, 0, 0, time.UTC)

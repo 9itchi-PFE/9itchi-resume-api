@@ -32,6 +32,7 @@ Port `8082`, health `/health`. All endpoints are implemented.
 | GET | `/templates/:id` | user | GetTemplate |
 | POST | `/admin/templates` | admin | CreateTemplate |
 | PUT | `/admin/templates/:id` | admin | UpdateTemplate |
+| GET | `/admin/users/:id/downloads` | admin | UserDownloads (for the team: how many CV downloads a student made and when the last one was, to tell whether a payment was used; nothing of which CV) |
 | GET | `/admin/users/:id/cv` | admin | UserCV (for the team: how many CVs a student has and how the one changed last does with the 24 rules; nothing of what it says) |
 | GET | `/resumes/:id/files` | user | ListFiles |
 | GET | `/resumes/:id/files/:fileId` | user | DownloadFile |

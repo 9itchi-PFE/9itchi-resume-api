@@ -27,6 +27,8 @@ type FileRepository interface {
 	Original(ctx context.Context, resumeID string) (*db.ResumeFile, error)
 	// CountExportsByUser counts the user's downloads since a time (nil: ever); deleting a CV does not reset it.
 	CountExportsByUser(ctx context.Context, userID string, since *time.Time) (int, error)
+	// LastExportByUser returns how many downloads the user made and when the last one was (nil when none).
+	LastExportByUser(ctx context.Context, userID string) (int, *time.Time, error)
 	// LatestPhoto returns the CV photo with its blob (ErrNotFound when none).
 	LatestPhoto(ctx context.Context, resumeID string) (*db.ResumeFile, error)
 	// HasPhoto reports whether the CV has a photo, without reading the blob.
@@ -134,6 +136,16 @@ func (r *fileRepository) CountExportsByUser(ctx context.Context, userID string, 
 	err := r.store.Conn(ctx).QueryRow(ctx,
 		`SELECT count(*) FROM resume_downloads WHERE user_id = $1 AND ($2::timestamptz IS NULL OR created_at >= $2)`, userID, since).Scan(&n)
 	return n, MapError(err)
+}
+
+func (r *fileRepository) LastExportByUser(ctx context.Context, userID string) (int, *time.Time, error) {
+	ctx, cancel := QueryTimeout(ctx)
+	defer cancel()
+	var n int
+	var last *time.Time
+	err := r.store.Conn(ctx).QueryRow(ctx,
+		`SELECT count(*), max(created_at) FROM resume_downloads WHERE user_id = $1`, userID).Scan(&n, &last)
+	return n, last, MapError(err)
 }
 
 func (r *fileRepository) RecordDownload(ctx context.Context, userID, resumeID, format string) error {

@@ -182,6 +182,7 @@ type FileRepo struct {
 	LatestExportFn       func(ctx context.Context, resumeID, format string) (*db.ResumeFile, error)
 	OriginalFn           func(ctx context.Context, resumeID string) (*db.ResumeFile, error)
 	CountExportsByUserFn func(ctx context.Context, userID string, since *time.Time) (int, error)
+	LastExportByUserFn   func(ctx context.Context, userID string) (int, *time.Time, error)
 	RecordDownloadFn     func(ctx context.Context, userID, resumeID, format string) error
 	LatestPhotoFn        func(ctx context.Context, resumeID string) (*db.ResumeFile, error)
 	HasPhotoFn           func(ctx context.Context, resumeID string) (bool, error)
@@ -221,6 +222,13 @@ func (m *FileRepo) CountExportsByUser(ctx context.Context, userID string, since 
 		return 0, nil
 	}
 	return m.CountExportsByUserFn(ctx, userID, since)
+}
+
+func (m *FileRepo) LastExportByUser(ctx context.Context, userID string) (int, *time.Time, error) {
+	if m.LastExportByUserFn == nil {
+		return 0, nil, nil
+	}
+	return m.LastExportByUserFn(ctx, userID)
 }
 
 var _ repositories.FileRepository = (*FileRepo)(nil)
