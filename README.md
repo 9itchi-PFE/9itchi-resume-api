@@ -94,3 +94,7 @@ A student with no subscription writes and checks their CV but cannot download it
 - `resumes`: how many CVs (unchanged).
 
 When payments-api cannot be reached, downloads and the diagnosis answer 503 rather than show what the plan may not allow. The CV sent with an application (`/internal/resumes/:id/pdf`) is not a download.
+
+## Account deletion
+
+`DELETE /internal/users/:id` (`x-api-key`) is called by account-api before it deletes an account. Here it concerns the CVs with their versions, files and photo, the record of the downloads and the weekly advice. It runs in one transaction, answers `204`, and can be called again without harm (account-api retries until every service has answered). Nothing about the user is logged.
