@@ -741,7 +741,7 @@ func (d *docx) pack(sect string, branded bool) ([]byte, error) {
 	}
 	if branded {
 		rels += `<Relationship Id="rIdFooter" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/footer" Target="footer1.xml"/>`
-		add("word/footer1.xml", xmlHead+`<w:ftr `+docNS+`>`+para(pp{align: "center"}, run(BrandMark, rp{size: 7.5, italic: true, color: "6E6E6E"}))+`</w:ftr>`)
+		add("word/footer1.xml", xmlHead+`<w:ftr `+docNS+`>`+para(pp{align: "right"}, run(BrandLead+" ", rp{size: 7.5, color: "596070"})+run(brandName, rp{size: 7.5, bold: true, color: "101218"}))+`</w:ftr>`)
 	}
 	add("word/_rels/document.xml.rels", xmlHead+rels+`</Relationships>`)
 	add("word/styles.xml", xmlHead+`<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">`+

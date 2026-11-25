@@ -90,7 +90,7 @@ func TestDOCXBrandingEscapingAndBadPhoto(t *testing.T) {
 	assert.Contains(t, doc, "&lt;b&gt;&quot;Tom&quot; &amp; Jerry&lt;/b&gt;")
 	assert.NotContains(t, doc, "\x00")
 	assert.Contains(t, doc, "محمد", "Word can show Arabic")
-	assert.Contains(t, files["word/footer1.xml"], "9itchi-pfe.com")
+	assert.Contains(t, files["word/footer1.xml"], brandName)
 	assert.Contains(t, doc, `rIdFooter`)
 	assert.NotContains(t, files["word/_rels/document.xml.rels"], "rIdPhoto", "an unreadable photo is skipped")
 

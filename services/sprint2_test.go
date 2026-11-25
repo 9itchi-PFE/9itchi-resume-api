@@ -226,7 +226,7 @@ func TestDownloadQuotaAndBranding(t *testing.T) {
 	assert.Equal(t, start, *since, "the downloads of earlier periods do not count")
 	text, err := core.ExtractText("pdf", *data)
 	require.NoError(t, err)
-	assert.NotContains(t, text, "9itchi-pfe.com", "a subscriber's CV carries no mark")
+	assert.NotContains(t, text, core.BrandLead, "a subscriber's CV carries no mark")
 
 	f, _ = setup(three, 3)
 	_, apiErr = f.svc.ExportResume(context.Background(), uid, rid, api.ExportResumeRequest{Format: "pdf"})
@@ -251,7 +251,7 @@ func TestDownloadQuotaAndBranding(t *testing.T) {
 	_, apiErr = f.svc.ExportResume(context.Background(), uid, rid, api.ExportResumeRequest{Format: "pdf"})
 	require.Nil(t, apiErr)
 	text, _ = core.ExtractText("pdf", *data)
-	assert.Contains(t, text, "9itchi-pfe.com")
+	assert.Contains(t, text, core.BrandLead)
 	f, _ = setup(marked, 0)
 	_, apiErr = f.svc.ExportResume(context.Background(), uid, rid, api.ExportResumeRequest{Format: "docx"})
 	require.NotNil(t, apiErr)

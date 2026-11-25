@@ -25,6 +25,11 @@ import (
 //go:embed fonts/*.ttf
 var fontFiles embed.FS
 
+// stampMark is the 9itchi mark of the brand stamp (120 px, on white).
+//
+//go:embed stamp_mark.png
+var stampMark []byte
+
 const (
 	sans     = "SourceSans3"
 	sansSemi = "SourceSans3SB"
@@ -59,8 +64,45 @@ var headings = map[string]map[string]string{
 		"skills": "Skills", "languages": "Languages", "certifications": "Certifications", "contact": "Contact"},
 }
 
-// BrandMark is the footer printed on free-plan downloads.
-const BrandMark = "CV créé avec 9itchi · 9itchi-pfe.com"
+// The stamp printed on branded downloads: the 9itchi mark, then "CV créé avec 9itchi", in the bottom right
+// corner of every page (the way a scanning app signs its pages). BrandSite is where the stamp leads.
+const (
+	BrandLead     = "CV créé avec"
+	brandName     = "9itchi"
+	BrandSite     = "https://9itchi-pfe.com"
+	stampH        = 6.2 // height of the stamp, mm
+	stampMargin   = 5.2 // distance from the right and bottom edges, mm: under the 12 mm bottom margin of the templates
+	stampTile     = 4.6 // side of the mark, mm
+	stampTextSize = 7.5 // points
+)
+
+// stamp draws the brand stamp on the current page: a white pill (so it reads on a coloured template too) holding
+// the lime 9itchi mark and the words. The whole pill is a link to the site.
+func (d *cv) stamp() {
+	pdf := d.pdf
+	d.font(sans, "", stampTextSize, rgb{89, 96, 112})
+	lead := pdf.GetStringWidth(BrandLead + " ")
+	d.font(sans, "B", stampTextSize, rgb{16, 18, 24})
+	name := pdf.GetStringWidth(brandName)
+	const pad, gap = 1.6, 1.4
+	w := pad + stampTile + gap + lead + name + pad + 0.6
+	x, y := 210-stampMargin-w, 297-stampMargin-stampH
+	pdf.SetAlpha(1, "Normal")
+	pdf.SetFillColor(255, 255, 255)
+	pdf.SetDrawColor(222, 225, 230)
+	pdf.SetLineWidth(0.15)
+	pdf.RoundedRect(x, y, w, stampH, stampH/2, "1234", "FD")
+	// The mark is the logo itself, as a picture: a drawn "9" would add a stray character to the text of the CV.
+	opt := fpdf.ImageOptions{ImageType: "PNG"}
+	pdf.RegisterImageOptionsReader("9itchi-mark", opt, bytes.NewReader(stampMark))
+	pdf.ImageOptions("9itchi-mark", x+pad, y+(stampH-stampTile)/2, stampTile, stampTile, false, opt, 0, "")
+	pdf.SetXY(x+pad+stampTile+gap, y)
+	d.font(sans, "", stampTextSize, rgb{89, 96, 112})
+	pdf.CellFormat(lead, stampH, BrandLead+" ", "", 0, "LM", false, 0, "")
+	d.font(sans, "B", stampTextSize, rgb{16, 18, 24})
+	pdf.CellFormat(name, stampH, brandName, "", 0, "LM", false, 0, "")
+	pdf.LinkString(x, y, w, stampH, BrandSite)
+}
 
 // inFont reports whether the embedded (Latin) subset has a glyph for r.
 func inFont(r rune) bool {
@@ -447,12 +489,7 @@ func (pdfExporter) Render(ctx context.Context, c api.ResumeContent, layout strin
 		})
 	}
 	if opts.Branded {
-		pdf.SetFooterFunc(func() {
-			pdf.SetY(-9)
-			pdf.SetX(0)
-			d.font(sans, "I", 7.5, rgb{110, 110, 110})
-			pdf.CellFormat(210, 4, BrandMark, "", 0, "C", false, 0, "https://9itchi-pfe.com")
-		})
+		pdf.SetFooterFunc(d.stamp)
 	}
 	switch layout {
 	case "modern":
