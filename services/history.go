@@ -46,6 +46,9 @@ func (s *resumeService) RestoreVersion(ctx context.Context, userID, id, versionI
 	if !isUUID(id) || !isUUID(versionID) {
 		return nil, newError(http.StatusBadRequest, "invalid id")
 	}
+	if apiErr := s.checkEditable(ctx, userID, id); apiErr != nil {
+		return nil, apiErr
+	}
 	var res *db.Resume
 	err := s.tx.WithTx(ctx, func(ctx context.Context) error {
 		v, err := s.repo.GetVersion(ctx, id, versionID)
@@ -115,6 +118,9 @@ func (s *resumeService) UploadPhoto(ctx context.Context, userID, id string, r io
 	if err := s.repo.Exists(ctx, userID, id); err != nil {
 		return repoError(err, "resume not found")
 	}
+	if apiErr := s.checkEditable(ctx, userID, id); apiErr != nil {
+		return apiErr
+	}
 	sum := sha256.Sum256(data)
 	err = s.tx.WithTx(ctx, func(ctx context.Context) error {
 		if err := s.files.DeletePhotos(ctx, id); err != nil {
@@ -154,6 +160,9 @@ func (s *resumeService) DeletePhoto(ctx context.Context, userID, id string) *mod
 	}
 	if err := s.repo.Exists(ctx, userID, id); err != nil {
 		return repoError(err, "resume not found")
+	}
+	if apiErr := s.checkEditable(ctx, userID, id); apiErr != nil {
+		return apiErr
 	}
 	if err := s.files.DeletePhotos(ctx, id); err != nil {
 		return repoError(err, "resume not found")

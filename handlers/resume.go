@@ -353,3 +353,16 @@ func Rewrite(svc services.RewriteService) gin.HandlerFunc {
 		c.JSON(http.StatusOK, result)
 	}
 }
+
+// ChooseEditable: PUT /resumes/:id/editable (user) keeps this CV editable beyond the plan's CV limit; the others
+// become read-only.
+func ChooseEditable(svc services.ResumeService) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		result, apiErr := svc.ChooseEditable(c.Request.Context(), c.GetString("user_id"), c.Param("id"))
+		if apiErr != nil {
+			models.FormatError(c, apiErr)
+			return
+		}
+		c.JSON(http.StatusOK, result)
+	}
+}

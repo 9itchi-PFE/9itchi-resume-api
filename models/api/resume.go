@@ -154,7 +154,9 @@ type ResumeResponse struct {
 	// ParseReport says what the reading changed (screen 1.2c); null until an upload is read.
 	ParseReport *ParseReport `json:"parse_report"`
 	// HasPhoto is true when a photo was uploaded (GET /resumes/:id/photo).
-	HasPhoto  bool          `json:"has_photo"`
+	HasPhoto bool `json:"has_photo"`
+	// Locked is true when the CV is beyond the plan's CV limit: it can be read and downloaded, not changed.
+	Locked    bool          `json:"locked"`
 	Content   ResumeContent `json:"content"`
 	CreatedAt time.Time     `json:"created_at"`
 	UpdatedAt time.Time     `json:"updated_at"`
@@ -162,12 +164,14 @@ type ResumeResponse struct {
 
 // ResumeListItem is a resume without content.
 type ResumeListItem struct {
-	ID         string    `json:"id"`
-	Title      string    `json:"title"`
-	TemplateID *string   `json:"template_id"`
-	Version    int       `json:"version"`
-	CreatedAt  time.Time `json:"created_at"`
-	UpdatedAt  time.Time `json:"updated_at"`
+	ID         string  `json:"id"`
+	Title      string  `json:"title"`
+	TemplateID *string `json:"template_id"`
+	Version    int     `json:"version"`
+	// Locked: see ResumeResponse.
+	Locked    bool      `json:"locked"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 type ListResumesResponse struct {

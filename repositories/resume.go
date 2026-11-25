@@ -39,6 +39,11 @@ type ResumeRepository interface {
 	// ApplyParsed stores the AI result only while parse_status is still pending (the user has not edited since).
 	// It returns false when the result was discarded.
 	ApplyParsed(ctx context.Context, id string, content []byte, language string, report []byte) (bool, error)
+	// EditableOrder returns the user's CV ids, the ones to keep editable first: the chosen one (pinned), then the
+	// last modified.
+	EditableOrder(ctx context.Context, userID string) ([]string, error)
+	// Pin marks a CV as the one the student keeps editing (ErrNotFound when it is not theirs).
+	Pin(ctx context.Context, userID, id string) error
 	// GetVersion returns one saved version with its content.
 	GetVersion(ctx context.Context, resumeID, versionID string) (*db.ResumeVersion, error)
 }
@@ -228,4 +233,30 @@ func (r *resumeRepository) GetVersion(ctx context.Context, resumeID, versionID s
 	}
 	v, err := pgx.CollectOneRow(rows, pgx.RowToAddrOfStructByName[db.ResumeVersion])
 	return v, MapError(err)
+}
+
+func (r *resumeRepository) EditableOrder(ctx context.Context, userID string) ([]string, error) {
+	ctx, cancel := QueryTimeout(ctx)
+	defer cancel()
+	rows, err := r.store.Conn(ctx).Query(ctx,
+		`SELECT id FROM resumes WHERE user_id = $1 AND parse_status <> 'failed'
+		 ORDER BY pinned_at DESC NULLS LAST, updated_at DESC, id`, userID)
+	if err != nil {
+		return nil, MapError(err)
+	}
+	ids, err := pgx.CollectRows(rows, pgx.RowTo[string])
+	return ids, MapError(err)
+}
+
+func (r *resumeRepository) Pin(ctx context.Context, userID, id string) error {
+	ctx, cancel := QueryTimeout(ctx)
+	defer cancel()
+	tag, err := r.store.Conn(ctx).Exec(ctx, `UPDATE resumes SET pinned_at = now() WHERE id = $1 AND user_id = $2`, id, userID)
+	if err != nil {
+		return MapError(err)
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
 }

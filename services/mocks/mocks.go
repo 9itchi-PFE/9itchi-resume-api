@@ -21,6 +21,8 @@ func (t Tx) WithTx(ctx context.Context, fn func(ctx context.Context) error) erro
 }
 
 type ResumeRepo struct {
+	EditableOrderFn  func(ctx context.Context, userID string) ([]string, error)
+	PinFn            func(ctx context.Context, userID, id string) error
 	CreateFn         func(ctx context.Context, userID, title string, templateID *string, content []byte) (*db.Resume, error)
 	GetFn            func(ctx context.Context, userID, id string) (*db.Resume, error)
 	GetByIDFn        func(ctx context.Context, id string) (*db.Resume, error)
@@ -42,6 +44,20 @@ func (m *ResumeRepo) GetVersion(ctx context.Context, resumeID, versionID string)
 		return nil, nil
 	}
 	return m.GetVersionFn(ctx, resumeID, versionID)
+}
+
+func (m *ResumeRepo) EditableOrder(ctx context.Context, userID string) ([]string, error) {
+	if m.EditableOrderFn == nil {
+		return nil, nil
+	}
+	return m.EditableOrderFn(ctx, userID)
+}
+
+func (m *ResumeRepo) Pin(ctx context.Context, userID, id string) error {
+	if m.PinFn == nil {
+		return nil
+	}
+	return m.PinFn(ctx, userID, id)
 }
 
 func (m *ResumeRepo) CountByUser(ctx context.Context, userID string) (int, error) {
