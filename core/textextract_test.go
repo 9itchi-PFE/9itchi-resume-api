@@ -76,12 +76,12 @@ func TestPDFBrandedAndLocalizedHeadings(t *testing.T) {
 	for _, want := range []string{"Google Data Analytics", "Coursera", "2025"} {
 		assert.Contains(t, text, want)
 	}
-	assert.Contains(t, text, "9itchi-pfe.com")
+	assert.Contains(t, text, BrandLead)
 
 	data, err = NewPDFExporter().Render(context.Background(), c, "classic", RenderOptions{Language: "en"})
 	require.NoError(t, err)
 	text, err = ExtractText("pdf", data)
 	require.NoError(t, err)
 	assert.Contains(t, text, "SKILLS")
-	assert.NotContains(t, text, "9itchi-pfe.com", "paid downloads carry no mark")
+	assert.NotContains(t, text, BrandLead, "paid downloads carry no mark")
 }

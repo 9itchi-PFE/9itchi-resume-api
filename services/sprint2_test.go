@@ -206,7 +206,7 @@ func TestDownloadQuotaAndBranding(t *testing.T) {
 	assert.Equal(t, "ines_ben_mansour.pdf", res.Filename, "rule 22: prenom_nom.pdf")
 	text, err := core.ExtractText("pdf", *data)
 	require.NoError(t, err)
-	assert.Contains(t, text, "9itchi-pfe.com", "the free download carries the mark")
+	assert.Contains(t, text, core.BrandLead, "the free download carries the mark")
 
 	f, _ = setup(free, 0)
 	_, apiErr = f.svc.ExportResume(context.Background(), uid, rid, api.ExportResumeRequest{Format: "docx"})
@@ -224,7 +224,7 @@ func TestDownloadQuotaAndBranding(t *testing.T) {
 	_, apiErr = f.svc.ExportResume(context.Background(), uid, rid, api.ExportResumeRequest{Format: "pdf"})
 	require.Nil(t, apiErr)
 	text, _ = core.ExtractText("pdf", *data)
-	assert.NotContains(t, text, "9itchi-pfe.com")
+	assert.NotContains(t, text, core.BrandLead)
 	res, apiErr = f.svc.ExportResume(context.Background(), uid, rid, api.ExportResumeRequest{Format: "docx"})
 	require.Nil(t, apiErr, "subscribers get the Word file")
 	assert.Equal(t, "ines_ben_mansour.docx", res.Filename)

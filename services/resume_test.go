@@ -376,7 +376,7 @@ func TestInternalResumePDF(t *testing.T) {
 	assert.True(t, bytes.HasPrefix(got.Data, []byte("%PDF-")))
 	text, err := core.ExtractText("pdf", got.Data)
 	require.NoError(t, err)
-	assert.NotContains(t, text, "9itchi-pfe.com", "the CV attached to an application carries no mark")
+	assert.NotContains(t, text, core.BrandLead, "the CV attached to an application carries no mark")
 
 	f.resumes.GetByIDFn = func(context.Context, string) (*db.Resume, error) { return nil, errors.New("boom") }
 	_, apiErr = f.svc.InternalResumePDF(context.Background(), rid)
