@@ -13,6 +13,7 @@ type Repositories struct {
 	Template TemplateRepository
 	File     FileRepository
 	Tip      TipRepository
+	Erase    EraseRepository
 }
 
 // InitRepositories connects to PostgreSQL, applies migrations and builds the repositories.
@@ -30,6 +31,7 @@ func InitRepositories(ctx context.Context, config utils.AppConfig) (*Repositorie
 		Template: NewTemplateRepository(store),
 		File:     NewFileRepository(store),
 		Tip:      NewTipRepository(store),
+		Erase:    NewEraseRepository(store),
 	}, nil
 }
 

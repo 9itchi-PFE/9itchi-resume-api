@@ -11,6 +11,8 @@ import (
 
 // Services holds service implementations and the peer clients they call.
 type Services struct {
+	// Erase removes what this service keeps about a deleted account.
+	Erase    EraseService
 	Resume   ResumeService
 	Template TemplateService
 	File     FileService
@@ -32,6 +34,7 @@ func InitServices(config utils.AppConfig, repos *repositories.Repositories) *Ser
 		Payments: payments.New(config.PaymentsAPIURL, config.InternalAPIKey),
 	}
 	return &Services{
+		Erase: NewEraseService(repos.Erase),
 		Resume: NewResumeService(repos.Resume, repos.Template, repos.File, repos.Store, core.DefaultExporters(),
 			WithParser(clients.Ai), WithQuotas(clients.Payments)),
 		Template: NewTemplateService(repos.Template),
