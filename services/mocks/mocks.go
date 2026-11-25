@@ -139,12 +139,29 @@ func (m *ResumeRepo) ListVersions(ctx context.Context, resumeID string) ([]db.Re
 
 type TemplateRepo struct {
 	ListActiveFn func(ctx context.Context) ([]db.Template, error)
+	ListAllFn    func(ctx context.Context) ([]db.TemplateUsage, error)
+	OtherActive  *int
 	GetFn        func(ctx context.Context, id string) (*db.Template, error)
 	CreateFn     func(ctx context.Context, name, layout, previewURL string, active bool) (*db.Template, error)
 	UpdateFn     func(ctx context.Context, id string, patch repositories.TemplatePatch) (*db.Template, error)
 }
 
 var _ repositories.TemplateRepository = (*TemplateRepo)(nil)
+
+func (m *TemplateRepo) ListAll(ctx context.Context) ([]db.TemplateUsage, error) {
+	if m.ListAllFn == nil {
+		return nil, nil
+	}
+	return m.ListAllFn(ctx)
+}
+
+// CountOtherActive answers 1 unless OtherActive says otherwise: another template stays published.
+func (m *TemplateRepo) CountOtherActive(context.Context, string) (int, error) {
+	if m.OtherActive == nil {
+		return 1, nil
+	}
+	return *m.OtherActive, nil
+}
 
 func (m *TemplateRepo) ListActive(ctx context.Context) ([]db.Template, error) {
 	if m.ListActiveFn == nil {

@@ -28,6 +28,16 @@ type TemplateResponse struct {
 	UpdatedAt  time.Time `json:"updated_at"`
 }
 
+// AdminTemplateResponse is a template as the team sees it: published or not, and how many CVs use it.
+type AdminTemplateResponse struct {
+	TemplateResponse
+	Resumes int `json:"resumes"`
+}
+
+type AdminTemplatesResponse struct {
+	Items []AdminTemplateResponse `json:"items"`
+}
+
 type ListTemplatesResponse struct {
 	Items []TemplateResponse `json:"items"`
 }

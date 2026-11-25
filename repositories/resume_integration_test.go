@@ -43,6 +43,29 @@ func TestTemplatesSeededAndActiveOnly(t *testing.T) {
 	assert.ErrorIs(t, err, ErrConflict)
 	_, err = repo.Get(ctx, "00000000-0000-0000-0000-000000000000")
 	assert.ErrorIs(t, err, ErrNotFound)
+
+	// For the team: every template, the withdrawn one too, with how many CVs use it.
+	const student = "00000000-0000-0000-0000-0000000000c1"
+	_, err = NewResumeRepository(store).Create(ctx, student, "CV", &items[1].ID, []byte(`{}`))
+	require.NoError(t, err)
+	all, err := repo.ListAll(ctx)
+	require.NoError(t, err)
+	require.Len(t, all, 3)
+	use := map[string]int{}
+	published := 0
+	for _, a := range all {
+		use[a.ID] = a.Resumes
+		if a.Active {
+			published++
+		}
+	}
+	assert.Equal(t, 2, published)
+	assert.Equal(t, 1, use[items[1].ID])
+	assert.Zero(t, use[items[2].ID])
+
+	n, err := repo.CountOtherActive(ctx, items[1].ID)
+	require.NoError(t, err)
+	assert.Equal(t, 1, n, "items[0] is withdrawn: only items[2] is left beside items[1]")
 }
 
 func TestResumeCRUDScopedByUser(t *testing.T) {

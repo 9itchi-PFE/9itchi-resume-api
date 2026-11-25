@@ -60,3 +60,49 @@ func TestTemplateService(t *testing.T) {
 	require.NotNil(t, patch.Active)
 	assert.False(t, *patch.Active)
 }
+
+func TestAdminSeesEveryTemplateWithItsUse(t *testing.T) {
+	repo := &mocks.TemplateRepo{}
+	svc := NewTemplateService(repo)
+	repo.ListAllFn = func(context.Context) ([]db.TemplateUsage, error) {
+		return []db.TemplateUsage{
+			{Template: db.Template{ID: tid, Name: "Classic", Layout: "classic", Active: true}, Resumes: 12},
+			{Template: db.Template{ID: "t2", Name: "Compact", Layout: "compact"}},
+		}, nil
+	}
+	list, apiErr := svc.ListAllTemplates(context.Background())
+	require.Nil(t, apiErr)
+	require.Len(t, list.Items, 2)
+	assert.Equal(t, 12, list.Items[0].Resumes)
+	assert.True(t, list.Items[0].Active)
+	assert.False(t, list.Items[1].Active, "a withdrawn template is listed too")
+
+	repo.ListAllFn = func(context.Context) ([]db.TemplateUsage, error) { return nil, assert.AnError }
+	_, apiErr = svc.ListAllTemplates(context.Background())
+	require.NotNil(t, apiErr)
+	assert.Equal(t, http.StatusInternalServerError, apiErr.Code)
+}
+
+func TestLastPublishedTemplateStays(t *testing.T) {
+	repo := &mocks.TemplateRepo{}
+	svc := NewTemplateService(repo)
+	updated := 0
+	repo.UpdateFn = func(_ context.Context, id string, _ repositories.TemplatePatch) (*db.Template, error) {
+		updated++
+		return &db.Template{ID: id}, nil
+	}
+	off, on, none := false, true, 0
+	repo.OtherActive = &none
+
+	_, apiErr := svc.UpdateTemplate(context.Background(), uid, tid, api.UpdateTemplateRequest{Active: &off})
+	require.NotNil(t, apiErr)
+	assert.Equal(t, http.StatusConflict, apiErr.Code)
+	assert.Zero(t, updated, "nothing is written")
+
+	_, apiErr = svc.UpdateTemplate(context.Background(), uid, tid, api.UpdateTemplateRequest{Active: &on})
+	require.Nil(t, apiErr, "publishing is never blocked")
+	name := "Classique"
+	_, apiErr = svc.UpdateTemplate(context.Background(), uid, tid, api.UpdateTemplateRequest{Name: &name})
+	require.Nil(t, apiErr, "renaming is not withdrawing")
+	assert.Equal(t, 2, updated)
+}

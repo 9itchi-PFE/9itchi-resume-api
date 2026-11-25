@@ -30,8 +30,9 @@ Port `8082`, health `/health`. All endpoints are implemented.
 | GET | `/me/downloads` | user | Downloads (`{"used", "limit"}`: downloads in the current period of the subscription and what the plan allows; `limit` is null without a limit, 0 without a subscription) |
 | GET | `/templates` | user | ListTemplates |
 | GET | `/templates/:id` | user | GetTemplate |
+| GET | `/admin/templates` | admin | ListAllTemplates (every template, published or not, with `resumes`: how many CVs use it) |
 | POST | `/admin/templates` | admin | CreateTemplate |
-| PUT | `/admin/templates/:id` | admin | UpdateTemplate |
+| PUT | `/admin/templates/:id` | admin | UpdateTemplate (409 when it would withdraw the last published template) |
 | GET | `/admin/users/:id/downloads` | admin | UserDownloads (for the team: how many CV downloads a student made and when the last one was, to tell whether a payment was used; nothing of which CV) |
 | GET | `/admin/users/:id/cv` | admin | UserCV (for the team: how many CVs a student has and how the one changed last does with the 24 rules; nothing of what it says) |
 | GET | `/resumes/:id/files` | user | ListFiles |

@@ -54,6 +54,7 @@ func initializeRoutes(r *gin.Engine, services *services.Services) {
 	adminGroup := r.Group("/")
 	adminGroup.Use(AuthMiddleware(), RequireRole("admin"))
 	{
+		adminGroup.GET("/admin/templates", handlers.ListAllTemplates(services.Template))
 		adminGroup.POST("/admin/templates", handlers.CreateTemplate(services.Template))
 		adminGroup.PUT("/admin/templates/:id", handlers.UpdateTemplate(services.Template))
 		adminGroup.GET("/admin/users/:id/cv", handlers.UserCV(services.Resume))
