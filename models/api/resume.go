@@ -262,3 +262,17 @@ type TipsResponse struct {
 	Sent   int `json:"sent"`
 	Failed int `json:"failed"`
 }
+
+// UserCVResponse is where a student's CV stands, for the team: counts only, nothing of what the CV says.
+type UserCVResponse struct {
+	// ResumeID and Title are the CV the student changed last; Resumes is how many they have.
+	ResumeID string `json:"resume_id"`
+	Title    string `json:"title"`
+	Resumes  int    `json:"resumes"`
+	Version  int    `json:"version"`
+	// Passed of Total rules are met; ToFix are left to correct.
+	Passed    int       `json:"passed"`
+	Total     int       `json:"total"`
+	ToFix     int       `json:"to_fix"`
+	UpdatedAt time.Time `json:"updated_at"`
+}

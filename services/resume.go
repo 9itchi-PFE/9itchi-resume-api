@@ -54,6 +54,8 @@ type ResumeService interface {
 	ExportResume(ctx context.Context, userID string, id string, req api.ExportResumeRequest) (*api.FileResponse, *models.ApiError)
 	// POST /resumes/:id/ats-check: the 24 CV rules
 	ATSCheck(ctx context.Context, userID string, id string, req api.ATSCheckRequest) (*api.ATSCheckResponse, *models.ApiError)
+	// GET /admin/users/:id/cv: where the CV a student changed last stands with the 24 rules, for the team
+	UserCV(ctx context.Context, id string) (*api.UserCVResponse, *models.ApiError)
 	// GET /resumes/:id/versions/:versionId: one saved version with its content
 	GetVersion(ctx context.Context, userID, id, versionID string) (*api.VersionContentResponse, *models.ApiError)
 	// POST /resumes/:id/versions/:versionId/restore: put a saved version back (the replaced content is saved first)
@@ -469,6 +471,31 @@ func (s *resumeService) ATSCheck(ctx context.Context, userID string, id string, 
 	}
 	out := checkResume(ctx, s.templates, res, req.TargetLanguage)
 	return &out, nil
+}
+
+// UserCV is what the team sees of a student's CV: how many they have and how the one changed last does with the
+// 24 rules. What the CV says is not returned.
+func (s *resumeService) UserCV(ctx context.Context, id string) (*api.UserCVResponse, *models.ApiError) {
+	if !isUUID(id) {
+		return nil, newError(http.StatusBadRequest, "invalid user id")
+	}
+	id = strings.ToLower(id)
+	latest, total, err := s.repo.List(ctx, id, 1, 0)
+	if err != nil {
+		return nil, repoError(err, "resume not found")
+	}
+	if len(latest) == 0 {
+		return nil, newError(http.StatusNotFound, "resume not found")
+	}
+	res, err := s.repo.Get(ctx, id, latest[0].ID)
+	if err != nil {
+		return nil, repoError(err, "resume not found")
+	}
+	check := checkResume(ctx, s.templates, res, "")
+	return &api.UserCVResponse{
+		ResumeID: res.ID, Title: res.Title, Resumes: total, Version: res.Version,
+		Passed: check.Passed, Total: check.Total, ToFix: check.ToFix, UpdatedAt: res.UpdatedAt,
+	}, nil
 }
 
 // checkResume runs the 24 rules on a CV as it is now, rendered with its template. targetLanguage is the language
