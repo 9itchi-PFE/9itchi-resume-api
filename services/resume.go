@@ -56,6 +56,8 @@ type ResumeService interface {
 	ATSCheck(ctx context.Context, userID string, id string, req api.ATSCheckRequest) (*api.ATSCheckResponse, *models.ApiError)
 	// GET /admin/users/:id/cv: where the CV a student changed last stands with the 24 rules, for the team
 	UserCV(ctx context.Context, id string) (*api.UserCVResponse, *models.ApiError)
+	// UserDownloads is how many CV downloads a student made and when the last one was (admin).
+	UserDownloads(ctx context.Context, id string) (*api.UserDownloadsResponse, *models.ApiError)
 	// GET /resumes/:id/versions/:versionId: one saved version with its content
 	GetVersion(ctx context.Context, userID, id, versionID string) (*api.VersionContentResponse, *models.ApiError)
 	// POST /resumes/:id/versions/:versionId/restore: put a saved version back (the replaced content is saved first)
@@ -86,6 +88,8 @@ type resumeService struct {
 	parser core.ResumeParser
 	// quotas enforces the plan limits (payments-api); nil means no limits (tests, local runs without payments).
 	quotas core.QuotaSource
+	// events announces a student's first CV; nil announces nothing (tests, local runs).
+	events core.Publisher
 	// async runs background work; tests replace it to run synchronously.
 	async func(func())
 }
@@ -98,6 +102,9 @@ func WithParser(p core.ResumeParser) Option { return func(s *resumeService) { s.
 
 // WithQuotas enables plan limits: CVs, downloads per period and the groups of the diagnosis shown.
 func WithQuotas(q core.QuotaSource) Option { return func(s *resumeService) { s.quotas = q } }
+
+// WithEvents sets where the service announces a student's first CV.
+func WithEvents(p core.Publisher) Option { return func(s *resumeService) { s.events = p } }
 
 func NewResumeService(
 	repo repositories.ResumeRepository,
@@ -236,6 +243,7 @@ func (s *resumeService) UploadResume(ctx context.Context, userID string, filenam
 	if err != nil {
 		return nil, repoError(err, "resume not found")
 	}
+	s.announceFirst(ctx, userID)
 	if s.parser != nil {
 		if err := s.repo.SetParseStatus(ctx, resume.ID, db.ParsePending); err != nil {
 			utils.Logger.Error("upload: mark pending", zap.Error(err))
@@ -505,6 +513,19 @@ func (s *resumeService) UserCV(ctx context.Context, id string) (*api.UserCVRespo
 	}, nil
 }
 
+// UserDownloads tells the team whether a student downloaded a CV and when they last did: a download made after a
+// payment means the payment was used. A student with no download gets zero, not an error.
+func (s *resumeService) UserDownloads(ctx context.Context, id string) (*api.UserDownloadsResponse, *models.ApiError) {
+	if !isUUID(id) {
+		return nil, newError(http.StatusBadRequest, "invalid user id")
+	}
+	n, last, err := s.files.LastExportByUser(ctx, strings.ToLower(id))
+	if err != nil {
+		return nil, repoError(err, "not found")
+	}
+	return &api.UserDownloadsResponse{Count: n, LastAt: last}, nil
+}
+
 // checkResume runs the 24 rules on a CV as it is now, rendered with its template. targetLanguage is the language
 // of the company the student applies to, "" when not said.
 func checkResume(ctx context.Context, templates repositories.TemplateRepository, res *db.Resume, targetLanguage string) api.ATSCheckResponse {
@@ -601,6 +622,21 @@ func (s *resumeService) InternalResumeOriginal(ctx context.Context, id string) (
 		return nil, newError(http.StatusNotFound, "imported file not found")
 	}
 	return &api.FileContent{Filename: f.Filename, ContentType: f.ContentType, Data: f.Data}, nil
+}
+
+// announceFirst publishes cv.first_imported when the CV just imported is the student's only one: the step « first
+// CV » of the statistics. Nothing but the id of the student travels, and a failure only loses that figure.
+func (s *resumeService) announceFirst(ctx context.Context, userID string) {
+	if s.events == nil {
+		return
+	}
+	n, err := s.repo.CountByUser(ctx, userID)
+	if err != nil || n != 1 {
+		return
+	}
+	if err := s.events.Publish(ctx, core.EventCVFirstImported, map[string]any{"user_id": userID}); err != nil {
+		utils.Logger.Warn("publish event", zap.String("event", core.EventCVFirstImported), zap.Error(err))
+	}
 }
 
 func exportContentType(format string) string {

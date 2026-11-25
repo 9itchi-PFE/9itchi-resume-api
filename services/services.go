@@ -33,13 +33,15 @@ func InitServices(config utils.AppConfig, repos *repositories.Repositories) *Ser
 		Account:  account.New(config.AccountAPIURL, config.InternalAPIKey),
 		Payments: payments.New(config.PaymentsAPIURL, config.InternalAPIKey),
 	}
+	// One publisher for the whole service: the weekly advice and the first CV of a student.
+	events := core.NewPublisher(config.RabbitMQURL)
 	return &Services{
 		Erase: NewEraseService(repos.Erase),
 		Resume: NewResumeService(repos.Resume, repos.Template, repos.File, repos.Store, core.DefaultExporters(),
-			WithParser(clients.Ai), WithQuotas(clients.Payments)),
+			WithParser(clients.Ai), WithQuotas(clients.Payments), WithEvents(events)),
 		Template: NewTemplateService(repos.Template),
 		File:     NewFileService(repos.File, repos.Resume),
-		Tip:      NewTipService(repos.Tip, repos.Resume, repos.Template, core.NewPublisher(config.RabbitMQURL)),
+		Tip:      NewTipService(repos.Tip, repos.Resume, repos.Template, events),
 		Clients:  clients,
 	}
 }

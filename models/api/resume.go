@@ -269,6 +269,13 @@ type TipsResponse struct {
 	Failed int `json:"failed"`
 }
 
+// UserDownloadsResponse is what the team sees of a student's CV downloads: how many, and when the last one was.
+// It is what tells whether a payment was used (the refund rule); it says nothing of which CV.
+type UserDownloadsResponse struct {
+	Count  int        `json:"count"`
+	LastAt *time.Time `json:"last_at"`
+}
+
 // UserCVResponse is where a student's CV stands, for the team: counts only, nothing of what the CV says.
 type UserCVResponse struct {
 	// ResumeID and Title are the CV the student changed last; Resumes is how many they have.
