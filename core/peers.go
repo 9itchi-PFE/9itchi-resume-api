@@ -45,7 +45,23 @@ const (
 	QuotaCVDownloads = "cv_downloads"
 	// QuotaATSPrefix + a group of the diagnosis (ats_experience, ats_layout...) set to 0 hides that group.
 	QuotaATSPrefix = "ats_"
+	// QuotaAIRewrites is the monthly limit of AI rewrites of a CV line or of the summary (absent: no limit; 0:
+	// none). A rewrite of the same text, given back again, is not counted.
+	QuotaAIRewrites = "ai_rewrites_per_month"
 )
+
+// RewriteInput is one line (or the summary) of a CV to rewrite, for an offer when JobTitle is set.
+type RewriteInput struct {
+	Section  string
+	Text     string
+	Language string
+	JobTitle string
+}
+
+// Rewriter calls ai-api's internal rewrite route. Implementations never log the text.
+type Rewriter interface {
+	Rewrite(ctx context.Context, in RewriteInput) ([]string, error)
+}
 
 // Shows says whether the plan shows a group of the diagnosis: hidden only when its key is 0.
 func (q *Quotas) Shows(group string) bool {

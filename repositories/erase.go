@@ -22,6 +22,7 @@ var eraseStatements = []string{
 	`DELETE FROM resumes WHERE user_id = $1`,
 	`DELETE FROM resume_downloads WHERE user_id = $1`,
 	`DELETE FROM cv_tips WHERE user_id = $1`,
+	`DELETE FROM ai_rewrites WHERE user_id = $1`,
 }
 
 func (r *eraseRepository) EraseUser(ctx context.Context, userID string) (int64, error) {

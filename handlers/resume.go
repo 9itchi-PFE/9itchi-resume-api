@@ -336,3 +336,20 @@ func UserCV(svc services.ResumeService) gin.HandlerFunc {
 		c.JSON(http.StatusOK, result)
 	}
 }
+
+// Rewrite: POST /resumes/:id/rewrite (user) a better version of one line, or of the summary, by the AI.
+func Rewrite(svc services.RewriteService) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req api.RewriteRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			models.FormatError(c, &models.ApiError{Code: http.StatusBadRequest, Error: err})
+			return
+		}
+		result, apiErr := svc.Rewrite(c.Request.Context(), c.GetString("user_id"), c.Param("id"), req)
+		if apiErr != nil {
+			models.FormatError(c, apiErr)
+			return
+		}
+		c.JSON(http.StatusOK, result)
+	}
+}

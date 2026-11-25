@@ -16,6 +16,7 @@ Port `8082`, health `/health`. All endpoints are implemented.
 | DELETE | `/resumes/:id` | user | DeleteResume |
 | GET | `/resumes/:id/versions` | user | ListVersions |
 | POST | `/resumes/:id/versions` | user | CreateVersion |
+| POST | `/resumes/:id/rewrite` | user | Rewrite (`{section: bullet|summary, text, language, job_title}` → `{suggestions, limit, used}`: a better version of one line or of the summary, by the AI) |
 | GET | `/resumes/:id/versions/:versionId` | user | GetVersion (with content) |
 | POST | `/resumes/:id/versions/:versionId/restore` | user | RestoreVersion |
 | POST | `/resumes/:id/duplicate` | user | DuplicateResume |
@@ -104,3 +105,7 @@ When payments-api cannot be reached, downloads and the diagnosis answer 503 rath
 ## First CV
 
 When a student imports their first CV (`POST /resumes/upload` leaves them with exactly one), the event `cv.first_imported` (`user_id`) is published: statistics-api counts it as the step « first CV » between signing up and subscribing. A student who deletes their CV and imports another is counted again. A failed count or publish never fails the import.
+
+## AI rewrites
+
+`POST /resumes/:id/rewrite` asks ai-api (internal route, internal key) for a better version of one line of the student's own CV, or of its summary. What the AI proposed is kept in `ai_rewrites` (migration `0005`) under a digest of the section, text, language and offer title: the same text comes back without asking the AI nor counting it. The plan's `ai_rewrites_per_month` limits new rewrites per calendar month (absent: no limit; `0`: 402 « part of the subscription »; reached: 402 « monthly limit »). Another student's CV is a 404. The rewrites are erased with the account.
