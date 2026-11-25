@@ -64,6 +64,8 @@ type ResumeService interface {
 	RestoreVersion(ctx context.Context, userID, id, versionID string) (*api.ResumeResponse, *models.ApiError)
 	// POST /resumes/:id/duplicate: copy a CV under a new title (counts against the CV limit)
 	DuplicateResume(ctx context.Context, userID, id string, req api.DuplicateResumeRequest) (*api.ResumeResponse, *models.ApiError)
+	// ChooseEditable makes this CV the one kept editable beyond the plan's CV limit (the others are read-only).
+	ChooseEditable(ctx context.Context, userID, id string) (*api.ResumeResponse, *models.ApiError)
 	// PUT /resumes/:id/photo: JPEG or PNG, 2 MB max, replaces the previous photo
 	UploadPhoto(ctx context.Context, userID, id string, r io.Reader) *models.ApiError
 	// GET /resumes/:id/photo
@@ -328,8 +330,14 @@ func (s *resumeService) ListResumes(ctx context.Context, userID string, page, pa
 	out := &api.ListResumesResponse{
 		Items: make([]api.ResumeListItem, 0, len(rows)), Total: total, Page: page, PageSize: pageSize,
 	}
+	locked, apiErr := s.lockedSet(ctx, userID)
+	if apiErr != nil {
+		return nil, apiErr
+	}
 	for _, r := range rows {
-		out.Items = append(out.Items, mapping.ResumeSummaryToItem(r))
+		item := mapping.ResumeSummaryToItem(r)
+		item.Locked = locked[r.ID]
+		out.Items = append(out.Items, item)
 	}
 	return out, nil
 }
@@ -342,7 +350,13 @@ func (s *resumeService) GetResume(ctx context.Context, userID string, id string)
 	if err != nil {
 		return nil, repoError(err, "resume not found")
 	}
-	return s.response(ctx, res), nil
+	resp := s.response(ctx, res)
+	locked, apiErr := s.lockedSet(ctx, userID)
+	if apiErr != nil {
+		return nil, apiErr
+	}
+	resp.Locked = locked[id]
+	return resp, nil
 }
 
 func (s *resumeService) UpdateResume(ctx context.Context, userID string, id string, req api.UpdateResumeRequest) (*api.ResumeResponse, *models.ApiError) {
@@ -362,6 +376,9 @@ func (s *resumeService) UpdateResume(ctx context.Context, userID string, id stri
 		}
 	}
 	if apiErr := s.checkTemplate(ctx, req.TemplateID); apiErr != nil {
+		return nil, apiErr
+	}
+	if apiErr := s.checkEditable(ctx, userID, id); apiErr != nil {
 		return nil, apiErr
 	}
 	// Content is only written when provided, so a template switch never alters it.
@@ -404,6 +421,10 @@ func (s *resumeService) ListVersions(ctx context.Context, userID string, id stri
 func (s *resumeService) CreateVersion(ctx context.Context, userID string, id string, req api.CreateVersionRequest) (*api.VersionResponse, *models.ApiError) {
 	if !isUUID(id) {
 		return nil, newError(http.StatusBadRequest, "invalid resume id")
+	}
+	// A version is saved after a change: none can happen on a locked CV, and saving one would make it the last modified.
+	if apiErr := s.checkEditable(ctx, userID, id); apiErr != nil {
+		return nil, apiErr
 	}
 	var meta *db.ResumeVersionMeta
 	err := s.tx.WithTx(ctx, func(ctx context.Context) error {

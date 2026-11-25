@@ -20,6 +20,7 @@ Port `8082`, health `/health`. All endpoints are implemented.
 | GET | `/resumes/:id/versions/:versionId` | user | GetVersion (with content) |
 | POST | `/resumes/:id/versions/:versionId/restore` | user | RestoreVersion |
 | POST | `/resumes/:id/duplicate` | user | DuplicateResume |
+| PUT | `/resumes/:id/editable` | user | ChooseEditable |
 | PUT | `/resumes/:id/photo` | user | UploadPhoto (multipart `file`) |
 | GET | `/resumes/:id/photo` | user | GetPhoto |
 | DELETE | `/resumes/:id/photo` | user | DeletePhoto |
@@ -109,3 +110,7 @@ When a student imports their first CV (`POST /resumes/upload` leaves them with e
 ## AI rewrites
 
 `POST /resumes/:id/rewrite` asks ai-api (internal route, internal key) for a better version of one line of the student's own CV, or of its summary. What the AI proposed is kept in `ai_rewrites` (migration `0005`) under a digest of the section, text, language and offer title: the same text comes back without asking the AI nor counting it. The plan's `ai_rewrites_per_month` limits new rewrites per calendar month (absent: no limit; `0`: 402 « part of the subscription »; reached: 402 « monthly limit »). Another student's CV is a 404. The rewrites are erased with the account.
+
+## CVs beyond the plan's limit (read-only)
+
+Nothing is deleted when a subscription ends. When a student has more CVs than the plan's `resumes` limit (at least one stays editable), the first ones in this order stay editable: the CV chosen with `PUT /resumes/:id/editable` (`resumes.pinned_at`, migration `0006`), then the last modified. The others carry `"locked": true` in `GET /resumes` and `GET /resumes/:id`; they can be read, downloaded (within the download limit) and deleted, but a change (`PUT /resumes/:id`, versions, restore, photo) answers `402 {"error":"subscribe to edit your other CVs"}`. A plan that allows them again unlocks them at once. If payments-api cannot be reached, nothing is locked.

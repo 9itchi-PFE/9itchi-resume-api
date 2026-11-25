@@ -286,3 +286,33 @@ func TestGetByIDIgnoresTheOwner(t *testing.T) {
 	_, err = repo.GetByID(ctx, "00000000-0000-0000-0000-0000000000ff")
 	assert.ErrorIs(t, err, ErrNotFound)
 }
+
+func TestEditableOrderPutsTheChosenCVFirst(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+	repo := NewResumeRepository(store)
+
+	older, err := repo.Create(ctx, userA, "Older", nil, []byte(`{}`))
+	require.NoError(t, err)
+	newer, err := repo.Create(ctx, userA, "Newer", nil, []byte(`{}`))
+	require.NoError(t, err)
+	_, err = repo.Update(ctx, userA, newer.ID, ptr("Newer, changed"), nil, nil)
+	require.NoError(t, err)
+	_, err = repo.Create(ctx, userB, "Other student", nil, []byte(`{}`))
+	require.NoError(t, err)
+
+	ids, err := repo.EditableOrder(ctx, userA)
+	require.NoError(t, err)
+	assert.Equal(t, []string{newer.ID, older.ID}, ids, "the last modified first, only the owner's")
+
+	assert.ErrorIs(t, repo.Pin(ctx, userB, older.ID), ErrNotFound)
+	require.NoError(t, repo.Pin(ctx, userA, older.ID))
+	ids, err = repo.EditableOrder(ctx, userA)
+	require.NoError(t, err)
+	assert.Equal(t, []string{older.ID, newer.ID}, ids, "the chosen one first")
+
+	_, err = repo.Update(ctx, userA, newer.ID, ptr("Changed again"), nil, nil)
+	require.NoError(t, err)
+	ids, _ = repo.EditableOrder(ctx, userA)
+	assert.Equal(t, older.ID, ids[0], "a choice outlasts later changes")
+}

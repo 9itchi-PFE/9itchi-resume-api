@@ -38,6 +38,7 @@ func initializeRoutes(r *gin.Engine, services *services.Services) {
 		userGroup.GET("/resumes/:id/versions/:versionId", handlers.GetVersion(services.Resume))
 		userGroup.POST("/resumes/:id/versions/:versionId/restore", handlers.RestoreVersion(services.Resume))
 		userGroup.POST("/resumes/:id/duplicate", handlers.DuplicateResume(services.Resume))
+		userGroup.PUT("/resumes/:id/editable", handlers.ChooseEditable(services.Resume))
 		userGroup.PUT("/resumes/:id/photo", handlers.UploadPhoto(services.Resume))
 		userGroup.GET("/resumes/:id/photo", handlers.GetPhoto(services.Resume))
 		userGroup.DELETE("/resumes/:id/photo", handlers.DeletePhoto(services.Resume))
