@@ -22,6 +22,18 @@ func ListTemplates(svc services.TemplateService) gin.HandlerFunc {
 	}
 }
 
+// ListAllTemplates: GET /admin/templates (admin) every template, published or not, with how many CVs use it.
+func ListAllTemplates(svc services.TemplateService) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		result, apiErr := svc.ListAllTemplates(c.Request.Context())
+		if apiErr != nil {
+			models.FormatError(c, apiErr)
+			return
+		}
+		c.JSON(http.StatusOK, result)
+	}
+}
+
 // GetTemplate: GET /templates/:id (user) template detail.
 func GetTemplate(svc services.TemplateService) gin.HandlerFunc {
 	return func(c *gin.Context) {

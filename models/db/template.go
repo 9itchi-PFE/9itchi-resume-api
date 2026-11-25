@@ -3,6 +3,12 @@ package db
 import "time"
 
 // Template maps table templates.
+// TemplateUsage is a template with how many CVs use it.
+type TemplateUsage struct {
+	Template
+	Resumes int `db:"resumes" json:"resumes"`
+}
+
 type Template struct {
 	ID         string    `db:"id" json:"id"`
 	Name       string    `db:"name" json:"name"`

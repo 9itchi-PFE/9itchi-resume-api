@@ -21,6 +21,10 @@ type TemplatePatch struct {
 // TemplateRepository is the only layer that touches PostgreSQL for template data.
 type TemplateRepository interface {
 	ListActive(ctx context.Context) ([]db.Template, error)
+	// ListAll returns every template, published or not, with how many CVs use each, oldest first.
+	ListAll(ctx context.Context) ([]db.TemplateUsage, error)
+	// CountOtherActive counts the published templates other than id.
+	CountOtherActive(ctx context.Context, id string) (int, error)
 	Get(ctx context.Context, id string) (*db.Template, error)
 	Create(ctx context.Context, name, layout, previewURL string, active bool) (*db.Template, error)
 	Update(ctx context.Context, id string, patch TemplatePatch) (*db.Template, error)
@@ -87,4 +91,25 @@ func (r *templateRepository) Update(ctx context.Context, id string, p TemplatePa
 	}
 	t, err := pgx.CollectOneRow(rows, pgx.RowToAddrOfStructByName[db.Template])
 	return t, MapError(err)
+}
+
+func (r *templateRepository) ListAll(ctx context.Context) ([]db.TemplateUsage, error) {
+	ctx, cancel := QueryTimeout(ctx)
+	defer cancel()
+	rows, err := r.store.Conn(ctx).Query(ctx,
+		`SELECT `+templateColumns+`, (SELECT count(*) FROM resumes r WHERE r.template_id = t.id) AS resumes
+		 FROM templates t ORDER BY created_at, name`)
+	if err != nil {
+		return nil, MapError(err)
+	}
+	items, err := pgx.CollectRows(rows, pgx.RowToStructByName[db.TemplateUsage])
+	return items, MapError(err)
+}
+
+func (r *templateRepository) CountOtherActive(ctx context.Context, id string) (int, error) {
+	ctx, cancel := QueryTimeout(ctx)
+	defer cancel()
+	var n int
+	err := r.store.Conn(ctx).QueryRow(ctx, `SELECT count(*) FROM templates WHERE active AND id <> $1`, id).Scan(&n)
+	return n, MapError(err)
 }
