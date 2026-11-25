@@ -121,3 +121,49 @@ func TestChooseTheEditableCV(t *testing.T) {
 	_, apiErr = f.svc.ChooseEditable(context.Background(), uid, tid)
 	assert.Equal(t, http.StatusNotFound, apiErr.Code)
 }
+
+func TestWithoutTheRightToEditEveryCVIsReadOnly(t *testing.T) {
+	q := &core.Quotas{PlanName: core.FreePlanName, Limits: map[string]int{core.QuotaResumes: 1, core.QuotaCVEdit: 0}}
+	f := lockedFixture(q, nil)
+	ctx := context.Background()
+	title := "New"
+
+	list, apiErr := f.svc.ListResumes(ctx, uid, 1, 20)
+	require.Nil(t, apiErr)
+	for _, it := range list.Items {
+		assert.True(t, it.Locked)
+		assert.Equal(t, "subscription", it.LockedReason)
+	}
+	got, apiErr := f.svc.GetResume(ctx, uid, rid)
+	require.Nil(t, apiErr)
+	assert.Equal(t, "subscription", got.LockedReason, "even the only CV")
+
+	_, apiErr = f.svc.UpdateResume(ctx, uid, rid, api.UpdateResumeRequest{Title: &title})
+	require.NotNil(t, apiErr)
+	assert.Equal(t, http.StatusPaymentRequired, apiErr.Code)
+	assert.Equal(t, "editing your CV is part of the subscription", apiErr.Error.Error())
+
+	for name, call := range map[string]func() *int{
+		"blank CV": func() *int {
+			_, e := f.svc.CreateResume(ctx, uid, api.CreateResumeRequest{Title: "CV"})
+			return &e.Code
+		},
+		"duplicate": func() *int {
+			_, e := f.svc.DuplicateResume(ctx, uid, rid, api.DuplicateResumeRequest{Title: "Copie"})
+			return &e.Code
+		},
+		"choose": func() *int { _, e := f.svc.ChooseEditable(ctx, uid, rid2); return &e.Code },
+		"photo": func() *int {
+			e := f.svc.UploadPhoto(ctx, uid, rid, strings.NewReader("\xFF\xD8\xFFjpeg"))
+			return &e.Code
+		},
+	} {
+		assert.Equal(t, http.StatusPaymentRequired, *call(), name)
+	}
+	assert.Nil(t, f.svc.DeleteResume(ctx, uid, rid), "deleting stays possible")
+
+	// A plan with cv_edit above 0, or without the key, edits as before.
+	f = lockedFixture(&core.Quotas{Limits: map[string]int{core.QuotaResumes: 2, core.QuotaCVEdit: 1}}, nil)
+	_, apiErr = f.svc.UpdateResume(ctx, uid, rid2, api.UpdateResumeRequest{Title: &title})
+	assert.Nil(t, apiErr)
+}

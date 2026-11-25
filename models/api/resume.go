@@ -155,11 +155,13 @@ type ResumeResponse struct {
 	ParseReport *ParseReport `json:"parse_report"`
 	// HasPhoto is true when a photo was uploaded (GET /resumes/:id/photo).
 	HasPhoto bool `json:"has_photo"`
-	// Locked is true when the CV is beyond the plan's CV limit: it can be read and downloaded, not changed.
-	Locked    bool          `json:"locked"`
-	Content   ResumeContent `json:"content"`
-	CreatedAt time.Time     `json:"created_at"`
-	UpdatedAt time.Time     `json:"updated_at"`
+	// Locked is true when the CV cannot be changed: LockedReason says why, "subscription" (editing the CV is part
+	// of the subscription) or "limit" (beyond the plan's CV limit). It can still be read and deleted.
+	Locked       bool          `json:"locked"`
+	LockedReason string        `json:"locked_reason,omitempty"`
+	Content      ResumeContent `json:"content"`
+	CreatedAt    time.Time     `json:"created_at"`
+	UpdatedAt    time.Time     `json:"updated_at"`
 }
 
 // ResumeListItem is a resume without content.
@@ -168,10 +170,11 @@ type ResumeListItem struct {
 	Title      string  `json:"title"`
 	TemplateID *string `json:"template_id"`
 	Version    int     `json:"version"`
-	// Locked: see ResumeResponse.
-	Locked    bool      `json:"locked"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	// Locked and LockedReason: see ResumeResponse.
+	Locked       bool      `json:"locked"`
+	LockedReason string    `json:"locked_reason,omitempty"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
 }
 
 type ListResumesResponse struct {
