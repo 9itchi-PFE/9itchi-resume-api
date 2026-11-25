@@ -1,23 +1,35 @@
 # 9itchi Resume API
+CVs: upload + background parse, editor content, versions/history, templates, photo, PDF/DOCX export, ATS check (24 rules), AI rewrite proxy, weekly CV tips, quota paywall. Port 8082, DB `resumes`.
 
-Resume upload, structured content, versions, templates, PDF/DOCX export, ATS check.
+## Conventions (shared by every 9itchi Go service)
+- `handlers/` thin (validate, authorize, call service, JSON) -> `services/` all logic, returns `(T, *models.ApiError)` -> `repositories/` only Postgres, plain errors (`ErrNotFound`, `ErrConflict`). Error body `{"error": "..."}`.
+- DB calls use `repositories.QueryTimeout`; multi-table writes `Store.WithTx`; never select `resume_files.data` in list queries.
+- Schema: add `migrations/NNNN_name.sql` (goose, embedded, runs at startup). Never edit a merged migration.
+- Auth: `Authorization: Bearer` AES-GCM-wrapped HS256 JWT (claims `id`, `email`, `role`, `typ`, `exp`; access only). `/admin/*` = `RequireRole("admin")`. `/internal/*` = `x-api-key` (`INTERNAL_API_KEY`), blocked by nginx.
+- Events: exchange `9itchi.events` (topic, routing key = event name), names in `core/events.go`; empty `RABBITMQ_URL` = `LogPublisher`.
+- Env only, validated in `utils/config.go`. Common: `PORT`, `ENVIRONMENT`, `DATABASE_URL`, `ITCHI_SECRET_KEY`, `ITCHI_ENCRYPTION_KEY`, `INTERNAL_API_KEY`, `INTERNAL_API_KEY_REQUIRED`. Never log tokens, passwords, PII.
+- Tests: `{resource}_test.go`, testify, func-field fakes (no testify/mock), success + error paths. Repo tests: `//go:build integration`, embedded Postgres.
+- Check: `gofmt -l .; go build ./... && go vet ./... && go test ./...`; `go test -tags integration -count=1 ./repositories/...`; `golangci-lint run`.
 
-## Stack
-Go, Gin, PostgreSQL (db `resumes`, pgx + goose migrations), Viper config, Zap logger. Peers over HTTP (`pkg/`): ai, account, payments. Events over RabbitMQ (names in `core/events.go`).
+## Routes
+- User: `POST /resumes/upload`; `GET|POST /resumes`; `GET|PUT|DELETE /resumes/:id`; `GET|POST /resumes/:id/versions`, `GET /resumes/:id/versions/:versionId`, `POST .../:versionId/restore`; `POST /resumes/:id/rewrite|duplicate|export|ats-check`; `PUT /resumes/:id/editable`; `GET|PUT|DELETE /resumes/:id/photo`; `GET /resumes/:id/files`, `GET|DELETE /resumes/:id/files/:fileId`; `GET /me/downloads`; `GET /templates`, `/templates/:id`.
+- Admin: `GET|POST /admin/templates`, `PUT /admin/templates/:id`; `GET /admin/users/:id/cv|downloads`.
+- Internal: `GET /internal/resumes/:id/pdf|original` (email-api), `POST /internal/tips/send` (schedule-api), `DELETE /internal/users/:id`.
 
-## Layout
-`main.go`, `app/` (init order: config, repositories, services, router), `router/` (routes + middleware), `handlers/` (thin) -> `services/` (logic) -> `repositories/` (Postgres only), `core/` (interfaces/factories), `models/{api,db,mapping}`, `pkg/` (peer clients), `utils/` (config, logger).
+## Data, peers, events
+- Tables: `templates`, `resumes`, `resume_versions`, `resume_files` (bytea `data`; `kind` original | export | photo), `resume_downloads`, `cv_tips`, `ai_rewrites`. Latest `0006_resumes_pinned.sql`.
+- Peers: ai (`/ai/resume/parse`, `/ai/resume/rewrite`), payments (`/internal/quotas/:userId`).
+- Publishes `cv.first_imported`, `cv.tips`. Consumes nothing.
+- `core/`: `PDFExporter` (go-pdf/fpdf, embedded `core/fonts`, `stamp_mark.png`), hand-built DOCX exporter, PDF text (`ledongthuc/pdf`), `photoextract.go`, `ats.go` rule engine.
+- Env: `RABBITMQ_URL`, `AI_API_URL`, `ACCOUNT_API_URL`, `PAYMENTS_API_URL`; `UNLIMITED_DOWNLOADS=true` (read via `os.Getenv` in `services/quota.go`, test envs only).
 
-Entities: `Resume`, `Template`, `ResumeFile`.
+## Domain rules
+- 402 from payments quotas: new CV beyond `resumes` (versions never limited); export when `cv_downloads` used up (DOCX subscribers only); rewrite beyond `ai_rewrites_per_month` (UTC month); any edit when `cv_edit` = 0.
+- Read-only CVs (`services/locked.go`): `cv_edit` = 0 locks all; over the plan's CV limit only the chosen (`PUT /editable`) or latest-modified stays editable. Nothing deleted. payments-api down = nothing locked.
+- Exports without a plan carry the 9itchi stamp; filename `prenom_nom`. PDF attached to applications is generated on demand, unstamped, not counted.
+- Rewrite cached in `ai_rewrites` (same text = no new count). Restore saves the replaced content first (undoable). Duplicate counts against the CV limit. Photo max 2 MB JPEG/PNG.
+- Upload parse in background (`parse_status`); never overwrites user edits; photo-only CVs read by ai-api vision; embedded photo imported unless one is set.
+- Tips: max 1/week per student, idle CVs first; resume only emits `cv.tips`. Other users' resumes = 404.
 
-## Rules
-- Every endpoint: validate inputs -> authorize caller -> execute via service -> respond JSON. No business logic in handlers.
-- Services return `(T, *models.ApiError)`; repos return plain errors; services wrap with a status code. Error body is always `{"error": "message"}`.
-- Users are referenced by their UUID `id` (JWT claim `id`). JWT claims: `id`, `email`, `role`, `typ`, `exp`. Header `Authorization: Bearer <AES-GCM encrypted HS256 JWT>`.
-- Every DB call uses a context with a deadline (`repositories.QueryTimeout`). Schema and indexes live in `migrations/*.sql` (goose, embedded, run at startup). Multi-table writes use `Store.WithTx`. Never select blob columns in list queries.
-- Nil-check optional nested fields. Never log passwords, tokens, Gmail tokens or PII. Secrets and URLs only from env.
-- `AuthMiddleware` validates the encrypted JWT (access tokens only); internal routes need `x-api-key`.
-- Tests: `{resource}_test.go`, testify, mock dependencies, cover success and error paths. Write the test with the implementation.
-
-## Commands
-`go build ./... && go test ./...`, `golangci-lint run`, `go run main.go` (port 8082), `docker build -t 9itchi-resume-api .`.
+## Gotchas
+- `pkg/account` client is an unused stub.
