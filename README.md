@@ -98,3 +98,7 @@ When payments-api cannot be reached, downloads and the diagnosis answer 503 rath
 ## Account deletion
 
 `DELETE /internal/users/:id` (`x-api-key`) is called by account-api before it deletes an account. Here it concerns the CVs with their versions, files and photo, the record of the downloads and the weekly advice. It runs in one transaction, answers `204`, and can be called again without harm (account-api retries until every service has answered). Nothing about the user is logged.
+
+## First CV
+
+When a student imports their first CV (`POST /resumes/upload` leaves them with exactly one), the event `cv.first_imported` (`user_id`) is published: statistics-api counts it as the step « first CV » between signing up and subscribing. A student who deletes their CV and imports another is counted again. A failed count or publish never fails the import.
