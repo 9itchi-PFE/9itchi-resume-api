@@ -7,6 +7,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"9itchi-resume-api/core"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -57,4 +59,20 @@ func TestParseErrorStatus(t *testing.T) {
 	defer srv.Close()
 	_, err := New(srv.URL, "k").Parse(context.Background(), "x")
 	assert.EqualError(t, err, "ai parse: status 503")
+}
+
+func TestRewriteWarnings(t *testing.T) {
+	for body, want := range map[string][]string{
+		`{"suggestions":["a"],"warnings":["new_numbers"]}`: {"new_numbers"},
+		`{"suggestions":["a"]}`:                            {},
+	} {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			_, _ = w.Write([]byte(body))
+		}))
+		sug, warn, err := New(srv.URL, "k").Rewrite(context.Background(), core.RewriteInput{Section: "bullet", Text: "x"})
+		srv.Close()
+		require.NoError(t, err)
+		assert.Equal(t, []string{"a"}, sug)
+		assert.Equal(t, want, warn)
+	}
 }

@@ -24,9 +24,10 @@ func TestRewriteRepository(t *testing.T) {
 	_, err := repo.Find(ctx, user, hash)
 	assert.ErrorIs(t, err, ErrNotFound)
 
-	w, err := repo.Save(ctx, &db.AIRewrite{UserID: user, ResumeID: cv, InputHash: hash, Suggestions: []string{"Développé un portail en React."}})
+	w, err := repo.Save(ctx, &db.AIRewrite{UserID: user, ResumeID: cv, InputHash: hash, Suggestions: []string{"Développé un portail en React."}, Warnings: []string{"new_numbers"}})
 	require.NoError(t, err)
 	assert.Equal(t, []string{"Développé un portail en React."}, w.Suggestions)
+	assert.Equal(t, []string{"new_numbers"}, w.Warnings)
 
 	again, err := repo.Save(ctx, &db.AIRewrite{UserID: user, ResumeID: cv, InputHash: hash, Suggestions: []string{"autre"}})
 	require.NoError(t, err)
@@ -36,8 +37,13 @@ func TestRewriteRepository(t *testing.T) {
 	got, err := repo.Find(ctx, user, hash)
 	require.NoError(t, err)
 	assert.Equal(t, w.ID, got.ID)
+	assert.Equal(t, []string{"new_numbers"}, got.Warnings, "warnings stored with the answer")
 	_, err = repo.Find(ctx, other, hash)
 	assert.ErrorIs(t, err, ErrNotFound, "another student sees nothing")
+
+	none, err := repo.Save(ctx, &db.AIRewrite{UserID: other, ResumeID: cv, InputHash: hash, Suggestions: []string{"x"}})
+	require.NoError(t, err)
+	assert.Equal(t, []string{}, none.Warnings, "nil warnings stored as []")
 
 	n, err := repo.CountSince(ctx, user, time.Now().Add(-time.Hour))
 	require.NoError(t, err)

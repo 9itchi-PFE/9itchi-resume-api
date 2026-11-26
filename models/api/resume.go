@@ -308,6 +308,7 @@ type RewriteRequest struct {
 // RewriteResponse is what the AI proposes, with what is left of the plan's rewrites this month (Limit nil: no limit).
 type RewriteResponse struct {
 	Suggestions []string `json:"suggestions"`
+	Warnings    []string `json:"warnings"` // new_numbers | too_long; never blocking, [] when none
 	Limit       *int     `json:"limit"`
 	Used        int      `json:"used"`
 }

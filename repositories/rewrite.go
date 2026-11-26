@@ -25,7 +25,7 @@ func NewRewriteRepository(store *Store) RewriteRepository {
 	return &rewriteRepository{store: store}
 }
 
-const rewriteColumns = `id, user_id, resume_id, input_hash, suggestions, created_at`
+const rewriteColumns = `id, user_id, resume_id, input_hash, suggestions, warnings, created_at`
 
 type rowScanner interface {
 	Scan(dest ...any) error
@@ -33,7 +33,7 @@ type rowScanner interface {
 
 func scanRewrite(r rowScanner) (*db.AIRewrite, error) {
 	var w db.AIRewrite
-	if err := r.Scan(&w.ID, &w.UserID, &w.ResumeID, &w.InputHash, &w.Suggestions, &w.CreatedAt); err != nil {
+	if err := r.Scan(&w.ID, &w.UserID, &w.ResumeID, &w.InputHash, &w.Suggestions, &w.Warnings, &w.CreatedAt); err != nil {
 		return nil, MapError(err)
 	}
 	return &w, nil
@@ -53,10 +53,14 @@ func (r *rewriteRepository) Save(ctx context.Context, w *db.AIRewrite) (*db.AIRe
 	if suggestions == nil {
 		suggestions = []string{}
 	}
+	warnings := w.Warnings
+	if warnings == nil {
+		warnings = []string{}
+	}
 	return scanRewrite(r.store.Conn(ctx).QueryRow(ctx, `
-		INSERT INTO ai_rewrites (user_id, resume_id, input_hash, suggestions) VALUES ($1, $2, $3, $4)
+		INSERT INTO ai_rewrites (user_id, resume_id, input_hash, suggestions, warnings) VALUES ($1, $2, $3, $4, $5)
 		ON CONFLICT (user_id, input_hash) DO UPDATE SET input_hash = ai_rewrites.input_hash
-		RETURNING `+rewriteColumns, w.UserID, w.ResumeID, w.InputHash, suggestions))
+		RETURNING `+rewriteColumns, w.UserID, w.ResumeID, w.InputHash, suggestions, warnings))
 }
 
 func (r *rewriteRepository) CountSince(ctx context.Context, userID string, since time.Time) (int, error) {

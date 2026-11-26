@@ -63,7 +63,7 @@ type RewriteInput struct {
 
 // Rewriter calls ai-api's internal rewrite route. Implementations never log the text.
 type Rewriter interface {
-	Rewrite(ctx context.Context, in RewriteInput) ([]string, error)
+	Rewrite(ctx context.Context, in RewriteInput) (suggestions, warnings []string, err error)
 }
 
 // Shows says whether the plan shows a group of the diagnosis: hidden only when its key is 0.
