@@ -340,6 +340,11 @@ func (d *docx) classic() string {
 			if i > 0 {
 				before = 60
 			}
+			if ly, ok := entryLook("classic", "education", d.c.Style); ok {
+				d.add(entryXML(width, ly, entryParts{title: e.Degree, subtitle: e.School}, dates(e.Start, e.End), e.Location,
+					docxEntryStyle{bold: bold, sub: ink, kind: ink, loc: ink, date: ink, first: pp{before: before, keepNext: true}}))
+				continue
+			}
 			d.add(rowP(width, []string{run(e.Degree, bold)}, dates(e.Start, e.End), ink, pp{before: before, keepNext: true}))
 			if e.School != "" || e.Location != "" {
 				d.add(rowP(width, []string{run(e.School, ink)}, e.Location, ink, pp{}))
@@ -353,6 +358,12 @@ func (d *docx) classic() string {
 			before := 0
 			if i > 0 {
 				before = 60
+			}
+			if ly, ok := entryLook("classic", "experience", d.c.Style); ok {
+				d.add(entryXML(width, ly, entryParts{title: e.Title, subtitle: e.Company, kind: e.Kind}, dates(e.Start, e.End), e.Location,
+					docxEntryStyle{bold: bold, sub: blue, kind: ink, loc: ink, date: bold, first: pp{before: before, keepNext: true}}))
+				d.bullets(e.Description, ink)
+				continue
 			}
 			d.add(rowP(width, []string{run(e.Title, bold)}, dates(e.Start, e.End), bold, pp{before: before, keepNext: true}))
 			if e.Company != "" || e.Kind != "" || e.Location != "" {
@@ -548,6 +559,11 @@ func (d *docx) modern(branded bool) string {
 	if len(d.c.Education) > 0 {
 		heading(d.titles["education"])
 		for _, e := range d.c.Education {
+			if ly, ok := entryLook("modern", "education", d.c.Style); ok {
+				m.WriteString(entryXML(textW, ly, entryParts{title: e.Degree, subtitle: e.School}, dates(e.Start, e.End), e.Location,
+					docxEntryStyle{bold: bold, sub: muted, kind: muted, loc: muted, date: muted, first: pp{before: 40}}))
+				continue
+			}
 			row([]string{run(join(" — ", e.School, e.Degree), bold)}, dates(e.Start, e.End), pp{before: 40})
 			if e.Location != "" {
 				row([]string{run(e.Location, muted)}, "", pp{})
@@ -558,6 +574,12 @@ func (d *docx) modern(branded bool) string {
 	if len(d.c.Experience) > 0 {
 		heading(d.titles["experience"])
 		for _, e := range d.c.Experience {
+			if ly, ok := entryLook("modern", "experience", d.c.Style); ok {
+				m.WriteString(entryXML(textW, ly, entryParts{title: e.Title, subtitle: e.Company, kind: e.Kind}, dates(e.Start, e.End), e.Location,
+					docxEntryStyle{bold: bold, sub: muted, kind: muted, loc: muted, date: muted, first: pp{before: 40, keepNext: true}}))
+				bullets(e.Description)
+				continue
+			}
 			row([]string{run(join(" — ", e.Title, e.Company), bold)}, dates(e.Start, e.End), pp{before: 40, keepNext: true})
 			if l := join(" · ", e.Kind, e.Location); l != "" {
 				row([]string{run(l, muted)}, "", pp{})
@@ -644,6 +666,11 @@ func (d *docx) compact() string {
 	if len(d.c.Education) > 0 {
 		heading(d.titles["education"])
 		for _, e := range d.c.Education {
+			if ly, ok := entryLook("compact", "education", d.c.Style); ok {
+				d.add(entryXML(width, ly, entryParts{title: e.Degree, subtitle: e.School}, dates(e.Start, e.End), e.Location,
+					docxEntryStyle{bold: bold, sub: ink, kind: ink, loc: ink, date: ink}))
+				continue
+			}
 			d.add(rowP(width, []string{run(join(" — ", e.School, e.Degree), bold)}, dates(e.Start, e.End), ink, pp{}))
 		}
 	}
@@ -651,6 +678,12 @@ func (d *docx) compact() string {
 	if len(d.c.Experience) > 0 {
 		heading(d.titles["experience"])
 		for _, e := range d.c.Experience {
+			if ly, ok := entryLook("compact", "experience", d.c.Style); ok {
+				d.add(entryXML(width, ly, entryParts{title: e.Title, subtitle: e.Company, kind: e.Kind}, dates(e.Start, e.End), e.Location,
+					docxEntryStyle{bold: bold, sub: ink, kind: ink, loc: ink, date: ink, first: pp{keepNext: true}}))
+				d.bullets(e.Description, ink)
+				continue
+			}
 			d.add(rowP(width, []string{run(join(" : ", e.Company, e.Title), bold), run(prefix(", ", e.Location), ink)}, dates(e.Start, e.End), ink, pp{keepNext: true}))
 			d.bullets(e.Description, ink)
 		}

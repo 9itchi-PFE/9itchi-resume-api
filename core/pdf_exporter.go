@@ -601,6 +601,10 @@ func (d *cv) classic(opts RenderOptions) {
 	rightLoc := func() { d.font(sans, pick(lk.dateStyle, ""), eb, d.locCol) }
 	rightOther := func() { d.font(sans, pick(lk.dateStyle, ""), eb, ink) }
 	between := func() { pdf.Ln(lk.gapOr(1)) }
+	locSeg := func(t string) seg { return seg{text: t, family: sans, style: pick(lk.subStyle, ""), col: d.locCol} }
+	// Used only when the user chose an entry layout.
+	eduEntry := entryStyle{bold: bold, sub: plain, kind: plain, loc: locSeg, date: rightPlain, locR: rightLoc}
+	expEntry := entryStyle{bold: bold, sub: accented, kind: plain, loc: locSeg, date: rightBold, locR: rightLoc}
 
 	sections := map[string]func(){
 		"summary": func() {
@@ -619,6 +623,10 @@ func (d *cv) classic(opts RenderOptions) {
 				if i > 0 {
 					between()
 				}
+				if ly, ok := entryLook("classic", "education", lk.style); ok {
+					d.entryRows(ly, entryParts{title: e.Degree, subtitle: e.School, url: e.URL}, dates(e.Start, e.End), e.Location, eduEntry, eb)
+					continue
+				}
 				d.row(d.segs(linked(bold(e.Degree), e.URL)), rightPlain, dates(e.Start, e.End), eb)
 				if e.School != "" || e.Location != "" {
 					d.row(d.segs(plain(e.School)), rightLoc, e.Location, eb)
@@ -634,13 +642,17 @@ func (d *cv) classic(opts RenderOptions) {
 				if i > 0 {
 					between()
 				}
-				d.row(d.segs(bold(e.Title)), rightBold, dates(e.Start, e.End), eb)
-				if e.Company != "" || e.Kind != "" || e.Location != "" {
-					parts := []seg{linked(accented(e.Company), e.URL)}
-					if e.Kind != "" {
-						parts = append(parts, plain(" ("+e.Kind+")"))
+				if ly, ok := entryLook("classic", "experience", lk.style); ok {
+					d.entryRows(ly, entryParts{title: e.Title, subtitle: e.Company, kind: e.Kind, url: e.URL}, dates(e.Start, e.End), e.Location, expEntry, eb)
+				} else {
+					d.row(d.segs(bold(e.Title)), rightBold, dates(e.Start, e.End), eb)
+					if e.Company != "" || e.Kind != "" || e.Location != "" {
+						parts := []seg{linked(accented(e.Company), e.URL)}
+						if e.Kind != "" {
+							parts = append(parts, plain(" ("+e.Kind+")"))
+						}
+						d.row(d.segs(parts...), rightLoc, e.Location, eb)
 					}
-					d.row(d.segs(parts...), rightLoc, e.Location, eb)
 				}
 				d.bullets(e.Description, b, ink)
 			}
@@ -918,6 +930,9 @@ func (d *cv) modern(opts RenderOptions) {
 	locSeg := func(t string) seg { return seg{text: t, family: sans, style: pick(lk.subStyle, ""), col: d.locCol} }
 	right := func() { d.font(sans, pick(lk.dateStyle, ""), eb, lk.col("dates", cvMuted)) }
 	between := func() { pdf.Ln(lk.gapOr(0.8)) }
+	rightLoc := func() { d.font(sans, pick(lk.dateStyle, ""), eb, d.locCol) }
+	// Used only when the user chose an entry layout.
+	sideEntry := entryStyle{bold: bold, sub: muted, kind: muted, loc: locSeg, date: right, locR: rightLoc}
 	mainSections := map[string]func(){
 		"summary": func() {
 			if s := strings.TrimSpace(d.c.Summary); s != "" {
@@ -932,9 +947,13 @@ func (d *cv) modern(opts RenderOptions) {
 			}
 			head(d.titles["education"])
 			for _, e := range d.c.Education {
-				d.row(d.segs(linked(bold(join(" — ", e.School, e.Degree)), e.URL)), right, dates(e.Start, e.End), eb)
-				if e.Location != "" {
-					d.row(d.segs(locSeg(e.Location)), right, "", eb)
+				if ly, ok := entryLook("modern", "education", lk.style); ok {
+					d.entryRows(ly, entryParts{title: e.Degree, subtitle: e.School, url: e.URL}, dates(e.Start, e.End), e.Location, sideEntry, eb)
+				} else {
+					d.row(d.segs(linked(bold(join(" — ", e.School, e.Degree)), e.URL)), right, dates(e.Start, e.End), eb)
+					if e.Location != "" {
+						d.row(d.segs(locSeg(e.Location)), right, "", eb)
+					}
 				}
 				between()
 			}
@@ -945,16 +964,20 @@ func (d *cv) modern(opts RenderOptions) {
 			}
 			head(d.titles["experience"])
 			for _, e := range d.c.Experience {
-				d.row(d.segs(linked(bold(join(" — ", e.Title, e.Company)), e.URL)), right, dates(e.Start, e.End), eb)
-				if e.Kind != "" || e.Location != "" {
-					var parts []seg
-					if e.Kind != "" {
-						parts = append(parts, muted(e.Kind))
+				if ly, ok := entryLook("modern", "experience", lk.style); ok {
+					d.entryRows(ly, entryParts{title: e.Title, subtitle: e.Company, kind: e.Kind, url: e.URL}, dates(e.Start, e.End), e.Location, sideEntry, eb)
+				} else {
+					d.row(d.segs(linked(bold(join(" — ", e.Title, e.Company)), e.URL)), right, dates(e.Start, e.End), eb)
+					if e.Kind != "" || e.Location != "" {
+						var parts []seg
+						if e.Kind != "" {
+							parts = append(parts, muted(e.Kind))
+						}
+						if e.Location != "" {
+							parts = append(parts, locSeg(prefix(" · ", e.Kind)+e.Location))
+						}
+						d.row(d.segs(parts...), right, "", eb)
 					}
-					if e.Location != "" {
-						parts = append(parts, locSeg(prefix(" · ", e.Kind)+e.Location))
-					}
-					d.row(d.segs(parts...), right, "", eb)
 				}
 				d.bullets(e.Description, b, ink)
 				between()
@@ -1068,6 +1091,9 @@ func (d *cv) compact(opts RenderOptions) {
 	}
 	locSeg := func(t string) seg { return seg{text: t, family: sans, style: pick(lk.subStyle, ""), col: d.locCol} }
 	right := func() { d.font(sans, pick(lk.dateStyle, ""), eb, lk.col("dates", ink)) }
+	rightLoc := func() { d.font(sans, pick(lk.dateStyle, ""), eb, d.locCol) }
+	// Used only when the user chose an entry layout.
+	flatEntry := entryStyle{bold: bold, sub: plain, kind: plain, loc: locSeg, date: right, locR: rightLoc}
 	sections := map[string]func(){
 		"summary": func() {
 			if s := strings.TrimSpace(d.c.Summary); s != "" {
@@ -1082,7 +1108,11 @@ func (d *cv) compact(opts RenderOptions) {
 			}
 			head(d.titles["education"])
 			for _, e := range d.c.Education {
-				d.row(d.segs(linked(bold(join(" — ", e.School, e.Degree)), e.URL)), right, dates(e.Start, e.End), eb)
+				if ly, ok := entryLook("compact", "education", lk.style); ok {
+					d.entryRows(ly, entryParts{title: e.Degree, subtitle: e.School, url: e.URL}, dates(e.Start, e.End), e.Location, flatEntry, eb)
+				} else {
+					d.row(d.segs(linked(bold(join(" — ", e.School, e.Degree)), e.URL)), right, dates(e.Start, e.End), eb)
+				}
 			}
 		},
 		"experience": func() {
@@ -1091,7 +1121,11 @@ func (d *cv) compact(opts RenderOptions) {
 			}
 			head(d.titles["experience"])
 			for _, e := range d.c.Experience {
-				d.row(d.segs(linked(bold(join(" : ", e.Company, e.Title)), e.URL), locSeg(prefix(", ", e.Location))), right, dates(e.Start, e.End), eb)
+				if ly, ok := entryLook("compact", "experience", lk.style); ok {
+					d.entryRows(ly, entryParts{title: e.Title, subtitle: e.Company, kind: e.Kind, url: e.URL}, dates(e.Start, e.End), e.Location, flatEntry, eb)
+				} else {
+					d.row(d.segs(linked(bold(join(" : ", e.Company, e.Title)), e.URL), locSeg(prefix(", ", e.Location))), right, dates(e.Start, e.End), eb)
+				}
 				d.bullets(e.Description, b, ink)
 				pdf.Ln(lk.gapOr(0))
 			}

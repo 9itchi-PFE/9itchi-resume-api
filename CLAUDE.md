@@ -28,6 +28,7 @@ CVs: upload + background parse, editor content, versions/history, templates, pho
 - Read-only CVs (`services/locked.go`): `cv_edit` = 0 locks all; over the plan's CV limit only the chosen (`PUT /editable`) or latest-modified stays editable. Nothing deleted. payments-api down = nothing locked.
 - Exports without a plan carry the 9itchi stamp; filename `prenom_nom`. PDF attached to applications is generated on demand, unstamped, not counted.
 - Rewrite cached in `ai_rewrites` (same text = no new count) with ai-api `warnings` (`new_numbers`, `too_long`; never blocking, `[]` when none), also on cache hits. Restore saves the replaced content first (undoable). Duplicate counts against the CV limit. Photo max 2 MB JPEG/PNG.
+- Style (`content.style`, `api.CVStyle`, all optional, unset = template default) is read by PDF, DOCX and the web preview alike. `entry_layout` (`stacked|inline`) and `entry_order` (`title_first|subtitle_first`) lay out experience/education title vs company/school in every template (`core/entry_layout.go`); an unset one keeps that template's own choice, both unset keeps the legacy code path.
 - Upload parse in background (`parse_status`); never overwrites user edits; photo-only CVs read by ai-api vision; embedded photo imported unless one is set.
 - Tips: max 1/week per student, idle CVs first; resume only emits `cv.tips`. Other users' resumes = 404.
 
