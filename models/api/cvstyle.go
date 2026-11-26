@@ -43,6 +43,33 @@ type CVStyle struct {
 	Background    string   `json:"background,omitempty" binding:"omitempty,max=7"`
 	AccentOn      []string `json:"accent_on" binding:"max=10,dive,oneof=name title headings rules dates location entry_title subtitle links"` // nil: the template defaults; empty: nothing
 	ShowPhoto     *bool    `json:"show_photo,omitempty"`
+	// EducationOrder is entry_order for education only (degree or school first); it wins over entry_order there.
+	EducationOrder string   `json:"education_order,omitempty" binding:"omitempty,oneof=title_first subtitle_first"`
+	HeadingRule    string   `json:"heading_rule,omitempty" binding:"omitempty,oneof=none thin thick"`  // rule under section headings
+	SectionGap     *float64 `json:"section_gap,omitempty" binding:"omitempty,min=0,max=12"`            // before each section heading, mm
+	SkillsStyle    string   `json:"skills_style,omitempty" binding:"omitempty,oneof=comma bullet bar"` // between skills
+	LanguagesStyle string   `json:"languages_style,omitempty" binding:"omitempty,oneof=rows inline"`   // one per row, or one paragraph
+	GroupRoles     *bool    `json:"group_roles,omitempty"`                                             // consecutive roles at one company under one company line
+}
+
+// DefaultCVStyle is the look a new CV starts with: Amiri throughout, 9 pt body, uppercase headings and a navy accent on the
+// name, title, headings, rules and dates, with each entry on one row ("Company, Job title") and its dates and location on
+// the right, degree before school, a thick rule under headings, bulleted skills, languages on one line and the roles
+// held at one company grouped under it. The student can change any of it in the style panel.
+func DefaultCVStyle() *CVStyle {
+	f := func(v float64) *float64 { return &v }
+	bold, group := true, true
+	return &CVStyle{
+		BaseSize: 9, NameDelta: f(9.5), TitleDelta: f(5), HeadingDelta: f(1.5), EntryDelta: f(0),
+		LineHeight: 1.15, Gap: f(2), MarginX: 10, MarginY: 10,
+		NameFont: "sans", BodyFont: "amiri", HeadingBold: &bold, HeadingCase: "uppercase",
+		DatePosition: "right", LocationPos: "date", MetaOrder: "date_first", MetaSep: "bar",
+		EntryLayout: "inline", EntryOrder: "subtitle_first", HeaderLayout: "inline", Align: "left",
+		ListStyle: "hyphen", SubtitleStyle: "italic", DateStyle: "normal", Separator: "icon",
+		ColorMode: "single", Accent: "#355C7D", AccentOn: []string{"name", "title", "headings", "rules", "dates"},
+		EducationOrder: "title_first", HeadingRule: "thick", SectionGap: f(4), SkillsStyle: "bullet", LanguagesStyle: "inline",
+		GroupRoles: &group,
+	}
 }
 
 var hexColor = regexp.MustCompile(`^#[0-9A-Fa-f]{6}$`)

@@ -46,25 +46,7 @@ func (d *cv) contactIcons(x, w, size float64, col, linkCol rgb, align string) {
 	is := size * ptToMM * 0.95
 	gapIcon, gapItem := is*0.45, 5.0
 	d.font(sans, "", size, col)
-	widths := make([]float64, len(items))
-	for i, it := range items {
-		widths[i] = is + gapIcon + pdf.GetStringWidth(cleanText(it.text))
-	}
-	var lines [][]int
-	cur, curW := []int{}, 0.0
-	for i := range items {
-		add := widths[i]
-		if len(cur) > 0 {
-			add += gapItem
-		}
-		if len(cur) > 0 && curW+add > w {
-			lines = append(lines, cur)
-			cur, curW, add = []int{}, 0, widths[i]
-		}
-		cur = append(cur, i)
-		curW += add
-	}
-	lines = append(lines, cur)
+	widths, lines := d.contactIconRows(items, w, size)
 	lh := d.lh(size) * 1.15
 	for _, ln := range lines {
 		y := pdf.GetY()
@@ -93,11 +75,41 @@ func (d *cv) contactIcons(x, w, size float64, col, linkCol rgb, align string) {
 	}
 }
 
+// contactIconRows gives the width of each icon + text item at size and splits the items into lines no wider than w.
+func (d *cv) contactIconRows(items []contactItem, w, size float64) ([]float64, [][]int) {
+	is := size * ptToMM * 0.95
+	gapIcon, gapItem := is*0.45, 5.0
+	d.pdf.SetFont(sans, "", size)
+	widths := make([]float64, len(items))
+	for i, it := range items {
+		widths[i] = is + gapIcon + d.pdf.GetStringWidth(cleanText(it.text))
+	}
+	var lines [][]int
+	cur, curW := []int{}, 0.0
+	for i := range items {
+		add := widths[i]
+		if len(cur) > 0 {
+			add += gapItem
+		}
+		if len(cur) > 0 && curW+add > w {
+			lines = append(lines, cur)
+			cur, curW, add = []int{}, 0, widths[i]
+		}
+		cur = append(cur, i)
+		curW += add
+	}
+	return widths, append(lines, cur)
+}
+
 // icon draws a small solid pictogram in the box (x, y, s, s).
 func (d *cv) icon(kind string, x, y, s float64, col rgb) {
 	p := d.pdf
+	cut := rgb{255, 255, 255} // the holes of the pictogram take the color under it
+	if d.iconBg != nil {
+		cut = *d.iconBg
+	}
 	p.SetFillColor(col.r, col.g, col.b)
-	p.SetDrawColor(255, 255, 255)
+	p.SetDrawColor(cut.r, cut.g, cut.b)
 	p.SetLineWidth(s * 0.09)
 	switch kind {
 	case "mail":
@@ -106,16 +118,16 @@ func (d *cv) icon(kind string, x, y, s float64, col rgb) {
 		p.Line(x+s, y+s*0.15, x+s/2, y+s*0.55)
 	case "phone":
 		p.RoundedRect(x+s*0.2, y, s*0.6, s, s*0.12, "1234", "F")
-		p.SetFillColor(255, 255, 255)
+		p.SetFillColor(cut.r, cut.g, cut.b)
 		p.Rect(x+s*0.3, y+s*0.15, s*0.4, s*0.55, "F")
 	case "pin":
 		p.Circle(x+s/2, y+s*0.38, s*0.36, "F")
 		p.Polygon([]fpdf.PointType{{X: x + s*0.17, Y: y + s*0.55}, {X: x + s*0.83, Y: y + s*0.55}, {X: x + s/2, Y: y + s}}, "F")
-		p.SetFillColor(255, 255, 255)
+		p.SetFillColor(cut.r, cut.g, cut.b)
 		p.Circle(x+s/2, y+s*0.38, s*0.14, "F")
 	case "linkedin":
 		p.RoundedRect(x, y, s, s, s*0.12, "1234", "F")
-		p.SetFillColor(255, 255, 255)
+		p.SetFillColor(cut.r, cut.g, cut.b)
 		p.Rect(x+s*0.2, y+s*0.4, s*0.14, s*0.4, "F")
 		p.Circle(x+s*0.27, y+s*0.26, s*0.09, "F")
 		p.Rect(x+s*0.42, y+s*0.4, s*0.13, s*0.4, "F")
@@ -123,7 +135,7 @@ func (d *cv) icon(kind string, x, y, s float64, col rgb) {
 		p.Circle(x+s*0.64, y+s*0.52, s*0.12, "F")
 	case "github":
 		p.Circle(x+s/2, y+s/2, s/2, "F")
-		p.SetFillColor(255, 255, 255)
+		p.SetFillColor(cut.r, cut.g, cut.b)
 		p.Circle(x+s/2, y+s*0.52, s*0.25, "F")
 	default:
 		p.SetDrawColor(col.r, col.g, col.b)

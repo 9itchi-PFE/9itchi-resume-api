@@ -30,14 +30,14 @@ func TestTemplatesSeededAndActiveOnly(t *testing.T) {
 	for _, it := range items {
 		layouts = append(layouts, it.Layout)
 	}
-	assert.ElementsMatch(t, []string{"classic", "modern", "compact"}, layouts)
+	assert.ElementsMatch(t, []string{"classic", "modern", "compact", "sidebar", "split", "banner"}, layouts)
 
 	off := false
 	_, err = repo.Update(ctx, items[0].ID, TemplatePatch{Active: &off})
 	require.NoError(t, err)
 	items2, err := repo.ListActive(ctx)
 	require.NoError(t, err)
-	assert.Len(t, items2, 2)
+	assert.Len(t, items2, 5)
 
 	_, err = repo.Create(ctx, items[1].Name, "classic", "", true)
 	assert.ErrorIs(t, err, ErrConflict)
@@ -50,7 +50,7 @@ func TestTemplatesSeededAndActiveOnly(t *testing.T) {
 	require.NoError(t, err)
 	all, err := repo.ListAll(ctx)
 	require.NoError(t, err)
-	require.Len(t, all, 3)
+	require.Len(t, all, 6)
 	use := map[string]int{}
 	published := 0
 	for _, a := range all {
@@ -59,13 +59,13 @@ func TestTemplatesSeededAndActiveOnly(t *testing.T) {
 			published++
 		}
 	}
-	assert.Equal(t, 2, published)
+	assert.Equal(t, 5, published)
 	assert.Equal(t, 1, use[items[1].ID])
 	assert.Zero(t, use[items[2].ID])
 
 	n, err := repo.CountOtherActive(ctx, items[1].ID)
 	require.NoError(t, err)
-	assert.Equal(t, 1, n, "items[0] is withdrawn: only items[2] is left beside items[1]")
+	assert.Equal(t, 4, n, "items[0] is withdrawn: four others are left beside items[1]")
 }
 
 func TestResumeCRUDScopedByUser(t *testing.T) {

@@ -7,7 +7,7 @@ import (
 )
 
 // Exporter renders a resume to a file format (Strategy). layout is the template layout name
-// (classic, modern, compact); unknown layouts fall back to classic.
+// (classic, modern, compact, and the two-column sidebar, split, banner); unknown layouts fall back to classic.
 type Exporter interface {
 	Format() string
 	Render(ctx context.Context, content api.ResumeContent, layout string, opts RenderOptions) ([]byte, error)
@@ -20,7 +20,7 @@ type RenderOptions struct {
 	Language string
 	// Branded adds the "made with 9itchi" mark to every page (free plan download).
 	Branded bool
-	// Photo is the CV photo (JPEG or PNG, PhotoFormat "jpeg" or "png"). Classic and modern show it in a circle;
+	// Photo is the CV photo (JPEG or PNG, PhotoFormat "jpeg" or "png"). Every layout but compact shows it in a circle;
 	// compact never does.
 	Photo       []byte
 	PhotoFormat string

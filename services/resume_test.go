@@ -537,3 +537,13 @@ func TestFirstCVIsAnnounced(t *testing.T) {
 	upload()
 	assert.Len(t, events.names, 2, "a publish that fails does not fail the import")
 }
+
+func TestWithDefaultStyle(t *testing.T) {
+	got := withDefaultStyle(api.ResumeContent{Summary: "hi"})
+	require.NotNil(t, got.Style)
+	assert.Equal(t, "amiri", got.Style.BodyFont)
+	assert.Equal(t, "hi", got.Summary)
+
+	own := &api.CVStyle{BodyFont: "lato"}
+	assert.Same(t, own, withDefaultStyle(api.ResumeContent{Style: own}).Style, "a style the CV brings is kept")
+}

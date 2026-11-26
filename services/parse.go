@@ -48,7 +48,7 @@ func (s *resumeService) readUpload(resumeID, format string, data []byte) {
 		fail("parse", err)
 		return
 	}
-	raw, apiErr := encodeContent(parsed.Content)
+	raw, apiErr := encodeContent(withDefaultStyle(parsed.Content))
 	if apiErr != nil {
 		fail("encode", apiErr.Error)
 		return
