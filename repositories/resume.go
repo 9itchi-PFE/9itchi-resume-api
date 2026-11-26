@@ -32,7 +32,11 @@ type ResumeRepository interface {
 	InsertVersion(ctx context.Context, resumeID string, versionNo int, label string, content []byte) (*db.ResumeVersionMeta, error)
 	// ListVersions never selects the content column.
 	ListVersions(ctx context.Context, resumeID string) ([]db.ResumeVersionMeta, error)
-	// CountByUser returns how many resumes the user has (free plan quota).
+	// Duplicate creates a copy of source (content and template) under a new title. The copy points to the root CV, so
+	// it does not count in CountByUser.
+	Duplicate(ctx context.Context, userID, title string, source *db.Resume) (*db.Resume, error)
+	// CountByUser returns how many CVs the user has imported or created (free plan quota): a CV and its copies count
+	// once, even after the CV itself is deleted.
 	CountByUser(ctx context.Context, userID string) (int, error)
 	// SetParseStatus changes parse_status (background AI reading, no user scoping).
 	SetParseStatus(ctx context.Context, id, status string) error
@@ -62,6 +66,20 @@ func (r *resumeRepository) Create(ctx context.Context, userID, title string, tem
 	rows, err := r.store.Conn(ctx).Query(ctx,
 		`INSERT INTO resumes (user_id, title, template_id, content) VALUES ($1, $2, $3, $4)
 		 RETURNING `+resumeColumns, userID, title, templateID, content)
+	if err != nil {
+		return nil, MapError(err)
+	}
+	res, err := pgx.CollectOneRow(rows, pgx.RowToAddrOfStructByName[db.Resume])
+	return res, MapError(err)
+}
+
+func (r *resumeRepository) Duplicate(ctx context.Context, userID, title string, source *db.Resume) (*db.Resume, error) {
+	ctx, cancel := QueryTimeout(ctx)
+	defer cancel()
+	rows, err := r.store.Conn(ctx).Query(ctx,
+		`INSERT INTO resumes (user_id, title, template_id, content, source_id)
+		 SELECT $1, $2, $3, $4, coalesce(source_id, id) FROM resumes WHERE id = $5 AND user_id = $1
+		 RETURNING `+resumeColumns, userID, title, source.TemplateID, source.Content, source.ID)
 	if err != nil {
 		return nil, MapError(err)
 	}
@@ -193,7 +211,7 @@ func (r *resumeRepository) CountByUser(ctx context.Context, userID string) (int,
 	ctx, cancel := QueryTimeout(ctx)
 	defer cancel()
 	var n int
-	err := r.store.Conn(ctx).QueryRow(ctx, `SELECT count(*) FROM resumes WHERE user_id = $1 AND parse_status <> 'failed'`, userID).Scan(&n)
+	err := r.store.Conn(ctx).QueryRow(ctx, `SELECT count(DISTINCT coalesce(source_id, id)) FROM resumes WHERE user_id = $1 AND parse_status <> 'failed'`, userID).Scan(&n)
 	return n, MapError(err)
 }
 

@@ -72,7 +72,7 @@ func (s *resumeService) RestoreVersion(ctx context.Context, userID, id, versionI
 }
 
 // DuplicateResume copies a CV (content and template) under a new title: one version per kind of job.
-// It counts against the plan's CV limit.
+// A copy is not an import: it never counts against the plan's CV limit.
 func (s *resumeService) DuplicateResume(ctx context.Context, userID, id string, req api.DuplicateResumeRequest) (*api.ResumeResponse, *models.ApiError) {
 	if !isUUID(id) {
 		return nil, newError(http.StatusBadRequest, "invalid resume id")
@@ -87,10 +87,7 @@ func (s *resumeService) DuplicateResume(ctx context.Context, userID, id string, 
 	if err != nil {
 		return nil, repoError(err, "resume not found")
 	}
-	if _, apiErr := s.checkResumeQuota(ctx, userID); apiErr != nil {
-		return nil, apiErr
-	}
-	res, err := s.repo.Create(ctx, userID, req.Title, src.TemplateID, src.Content)
+	res, err := s.repo.Duplicate(ctx, userID, req.Title, src)
 	if err != nil {
 		return nil, repoError(err, "resume not found")
 	}

@@ -85,9 +85,9 @@ func TestDuplicateResume(t *testing.T) {
 		return &db.Resume{ID: rid, TemplateID: &tpl, Content: []byte(`{"summary":"web"}`)}, nil
 	}
 	var created []string
-	f.resumes.CreateFn = func(_ context.Context, _, title string, templateID *string, c []byte) (*db.Resume, error) {
-		created = append(created, title+"|"+*templateID+"|"+string(c))
-		return &db.Resume{ID: "new", Title: title, Content: c}, nil
+	f.resumes.DuplicateFn = func(_ context.Context, _, title string, src *db.Resume) (*db.Resume, error) {
+		created = append(created, title+"|"+*src.TemplateID+"|"+string(src.Content))
+		return &db.Resume{ID: "new", Title: title, Content: src.Content}, nil
 	}
 	res, apiErr := f.svc.DuplicateResume(context.Background(), uid, rid, api.DuplicateResumeRequest{Title: "Data"})
 	require.Nil(t, apiErr)
@@ -98,8 +98,7 @@ func TestDuplicateResume(t *testing.T) {
 	free.resumes.GetFn = f.resumes.GetFn
 	free.resumes.CountByUserFn = func(context.Context, string) (int, error) { return 1, nil }
 	_, apiErr = free.svc.DuplicateResume(context.Background(), uid, rid, api.DuplicateResumeRequest{Title: "Data"})
-	require.NotNil(t, apiErr)
-	assert.Equal(t, http.StatusPaymentRequired, apiErr.Code)
+	require.Nil(t, apiErr, "a copy is not an import: the CV limit does not apply")
 }
 
 func TestPhoto(t *testing.T) {

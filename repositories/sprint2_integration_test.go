@@ -92,6 +92,15 @@ func TestCountsForQuotas(t *testing.T) {
 	n, _ = resumes.CountByUser(ctx, u1)
 	assert.Equal(t, 2, n)
 
+	copyA, err := resumes.Duplicate(ctx, u1, "a (data)", a)
+	require.NoError(t, err)
+	_, err = resumes.Duplicate(ctx, u1, "a (web)", copyA)
+	require.NoError(t, err)
+	n, _ = resumes.CountByUser(ctx, u1)
+	assert.Equal(t, 2, n, "copies are not imports")
+	_, err = resumes.Duplicate(ctx, "00000000-0000-0000-0000-000000000002", "stolen", a)
+	assert.ErrorIs(t, err, ErrNotFound, "only the owner copies a CV")
+
 	add := func(resumeID, kind string) {
 		_, err := files.Create(ctx, &db.ResumeFile{ResumeID: resumeID, Kind: kind, Format: "pdf", SizeBytes: 3,
 			SHA256: "0000000000000000000000000000000000000000000000000000000000000000", Data: []byte("pdf")})
