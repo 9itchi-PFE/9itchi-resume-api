@@ -203,6 +203,16 @@ func (d *cv) para(text string, size float64) {
 	d.pdf.MultiCell(d.w, d.lh(size), cleanText(text), "", "L", false)
 }
 
+// need starts a new page when less than h mm is left above the bottom margin, so a row, its dates and a
+// section title stay together instead of the dates landing on one page and the text on the next.
+func (d *cv) need(h float64) {
+	_, ph := d.pdf.GetPageSize()
+	_, bm := d.pdf.GetAutoPageBreak()
+	if d.pdf.GetY()+h > ph-bm {
+		d.pdf.AddPage()
+	}
+}
+
 // row writes left text and right text on one line; the left text wraps before the right one.
 // metaPart is a piece of a row's right text; loc pieces are locations folded into the dates.
 type metaPart struct {
@@ -236,6 +246,11 @@ func (d *cv) metaDraw(parts []metaPart, right func(), x, y, size float64) {
 
 func (d *cv) row(left, right func(), rightText string, size float64) {
 	pdf := d.pdf
+	if len(metaParts(rightText)) > 0 && d.lk.dateBelow {
+		d.need(2 * d.lh(size))
+	} else {
+		d.need(d.lh(size))
+	}
 	parts := metaParts(rightText)
 	if d.lk.dateBelow && len(parts) > 0 {
 		d.row(left, right, "", size)
@@ -336,6 +351,7 @@ func (d *cv) bullets(lines []string, size float64, col rgb) {
 		if strings.TrimSpace(l) == "" {
 			continue
 		}
+		d.need(d.lh(size))
 		d.font(sans, "", size, col)
 		y := d.pdf.GetY()
 		d.pdf.SetXY(d.x+1, y)
@@ -561,6 +577,7 @@ func (d *cv) classic(opts RenderOptions) {
 	pdf.Ln(2.5)
 
 	head := func(t string) {
+		d.need(12)
 		pdf.Ln(2.4)
 		d.font(sans, lk.headFont(""), lk.head, lk.col("headings", cvBlue))
 		pdf.SetX(d.x)
@@ -888,6 +905,7 @@ func (d *cv) modern(opts RenderOptions) {
 		d.para(d.c.Contact.Headline, lk.title)
 	}
 	head := func(t string) {
+		d.need(12)
 		pdf.Ln(3)
 		d.font(d.nameFamily(), lk.headFont("B"), lk.head, lk.col("headings", cvNavy))
 		pdf.SetX(d.x)
@@ -1035,6 +1053,7 @@ func (d *cv) compact(opts RenderOptions) {
 		pdf.SetY(top + 22)
 	}
 	head := func(t string) {
+		d.need(12)
 		pdf.Ln(2.6)
 		d.font(sans, lk.headFont("B"), lk.head, lk.col("headings", cvBlack))
 		pdf.SetX(d.x)
