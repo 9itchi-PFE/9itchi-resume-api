@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"strings"
 
 	"github.com/ledongthuc/pdf"
@@ -61,24 +62,75 @@ func pdfPlainText(data []byte) (text string, err error) {
 		if p.V.IsNull() {
 			continue
 		}
-		rows, err := p.GetTextByRow()
-		if err != nil {
-			continue
-		}
-		for _, row := range rows {
-			for j, w := range row.Content {
-				if j > 0 {
-					sb.WriteByte(' ')
-				}
-				sb.WriteString(w.S)
-			}
-			sb.WriteByte('\n')
-		}
+		writeRows(&sb, p.Content().Text)
 		if sb.Len() > MaxExtractedText*4 {
 			break
 		}
 	}
 	return sb.String(), nil
+}
+
+// rowTolerance is how far apart (in points) two glyph baselines may be and still sit on one line.
+const rowTolerance = 1.0
+
+// writeRows writes the glyphs of one page in the order they are drawn, starting a new line when the baseline moves.
+// CV generators draw in reading order, column by column, so this keeps two-column layouts apart; sorting by position
+// (GetTextByRow) mixed the columns and, as it ignores the page transform, read flipped pages (FlowCV, Chrome) bottom
+// line first. Glyphs often come one per Text, so a gap wider than a character is written as a space, a much wider one
+// (a right-hand date column) or a jump back to the left as three.
+func writeRows(sb *strings.Builder, texts []pdf.Text) {
+	var line strings.Builder
+	flush := func() {
+		if s := strings.TrimSpace(line.String()); s != "" {
+			sb.WriteString(s)
+			sb.WriteByte('\n')
+		}
+		line.Reset()
+	}
+	run := 0 // glyphs drawn at the X of the previous one (a font without widths)
+	for j, t := range texts {
+		if j > 0 {
+			prev := texts[j-1]
+			switch {
+			case math.Abs(t.Y-prev.Y) > rowTolerance:
+				flush()
+				run = 0
+			case t.X == prev.X:
+				run++
+			case t.X < prev.X:
+				line.WriteString("   ")
+				run = 0
+			default:
+				line.WriteString(glyphGap(prev, t, run))
+				run = 0
+			}
+		}
+		line.WriteString(t.S)
+	}
+	flush()
+}
+
+// glyphGap returns the separator to write between two neighbouring glyphs of a line. When the width of prev is unknown,
+// it and the run glyphs drawn at the same X before it are taken as half an em wide each.
+func glyphGap(prev, cur pdf.Text, run int) string {
+	if strings.HasSuffix(prev.S, " ") || strings.HasPrefix(cur.S, " ") {
+		return ""
+	}
+	fs := max(prev.FontSize, 1)
+	w, word := prev.W, 0.2*fs
+	if w <= 0 {
+		w, word = 0.5*fs*float64(run+1), 0.5*fs
+	}
+	switch gap := cur.X - prev.X - w; {
+	case gap > 3*fs:
+		return "   "
+	case gap > word:
+		return " "
+	case run >= 3 && prev.W <= 0 && cur.S != "" && !strings.ContainsAny(cur.S[:1], ",.;:)"):
+		// A string placed on its own after a run of unknown width: its true gap is unknown, keep the words apart.
+		return " "
+	}
+	return ""
 }
 
 func docxText(data []byte) (string, error) {

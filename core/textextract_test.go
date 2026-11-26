@@ -9,6 +9,7 @@ import (
 
 	"9itchi-resume-api/models/api"
 
+	"github.com/ledongthuc/pdf"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -84,4 +85,33 @@ func TestPDFBrandedAndLocalizedHeadings(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, text, "SKILLS")
 	assert.NotContains(t, text, BrandLead, "paid downloads carry no mark")
+}
+
+func TestWriteRowsKeepsDrawingOrder(t *testing.T) {
+	g := func(s string, x, y float64) pdf.Text { return pdf.Text{S: s, X: x, Y: y, FontSize: 10} }
+	// Glyph by glyph: a heading, a line with a right-hand date, a date drawn before its title, then a second column
+	// sharing the baselines of the first (it must not be mixed into it).
+	texts := []pdf.Text{
+		g("S", 20, 800), g("K", 26, 800),
+		g("E", 20, 760), g("N", 26, 760), g(" ", 32, 760), g("I", 36, 760), g("S", 50, 760.5), g("2", 300, 760), g("0", 306, 760),
+		g("2", 300, 740), g("4", 306, 740), g("G", 20, 740), g("o", 26, 740),
+		g("M", 400, 800), g("P", 408, 800), g("X", 400, 760),
+	}
+	var sb strings.Builder
+	writeRows(&sb, texts)
+	assert.Equal(t, "SK\nEN I S   20\n24   Go\nMP\nX\n", sb.String())
+}
+
+func TestWriteRowsFontWithoutWidths(t *testing.T) {
+	// Every glyph of a string at the string's X (no widths): words stay in drawing order, separate strings apart.
+	var texts []pdf.Text
+	for _, r := range "Degree" {
+		texts = append(texts, pdf.Text{S: string(r), X: 20, Y: 700, FontSize: 10})
+	}
+	texts = append(texts, pdf.Text{S: ",", X: 50, Y: 700, FontSize: 10}, pdf.Text{S: "E", X: 54, Y: 700, FontSize: 10},
+		pdf.Text{S: "N", X: 54, Y: 700, FontSize: 10}, pdf.Text{S: "I", X: 54, Y: 700, FontSize: 10}, pdf.Text{S: "S", X: 54, Y: 700, FontSize: 10},
+		pdf.Text{S: "2", X: 70, Y: 700, FontSize: 10})
+	var sb strings.Builder
+	writeRows(&sb, texts)
+	assert.Equal(t, "Degree,ENIS 2\n", sb.String())
 }

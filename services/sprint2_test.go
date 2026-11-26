@@ -4,6 +4,7 @@ import (
 	"archive/zip"
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"testing"
@@ -91,6 +92,28 @@ func TestUploadIsReadByAI(t *testing.T) {
 	assert.Contains(t, string(applied), `"certifications":[]`)
 	assert.Equal(t, "fr", lang)
 	assert.JSONEq(t, `{"pages":0,"seconds":0,"rewritten":3,"removed":["age","full_address"]}`, string(report))
+}
+
+func TestUploadKeepsSectionOrderAndHidesMissingPhoto(t *testing.T) {
+	parser := &fakeParser{out: &core.ParsedResume{Language: "en", Content: api.ResumeContent{
+		Contact: api.Contact{Name: "Ines"}, Extra: []api.ExtraSection{{Title: "Awards", Items: []string{"1st place"}}},
+	}}}
+	f, _ := newSprint2Fixture(WithParser(parser))
+	var applied []byte
+	f.resumes.ApplyParsedFn = func(_ context.Context, _ string, c []byte, _ string, _ []byte) (bool, error) {
+		applied = c
+		return true, nil
+	}
+	p := "</w:t></w:r></w:p><w:p><w:r><w:t>"
+	data := cvDocx(t, "Ines"+p+"PROFESSIONAL EXPERIENCE"+p+"Ingenico 2024"+p+"PROJECTS"+p+"EDUCATION"+p+"AWARDS"+p+"SKILLS")
+	_, apiErr := f.svc.UploadResume(context.Background(), uid, "cv.docx", int64(len(data)), bytes.NewReader(data))
+	require.Nil(t, apiErr)
+	var got api.ResumeContent
+	require.NoError(t, json.Unmarshal(applied, &got))
+	assert.Equal(t, []string{"experience", "projects", "education", "extra:0", "skills"}, got.SectionOrderKeys)
+	require.NotNil(t, got.Style)
+	require.NotNil(t, got.Style.ShowPhoto, "a CV without a photo is imported with the photo hidden")
+	assert.False(t, *got.Style.ShowPhoto)
 }
 
 func TestUploadPhotoOfCVIsReadAsImage(t *testing.T) {
