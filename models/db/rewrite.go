@@ -9,5 +9,6 @@ type AIRewrite struct {
 	ResumeID    string
 	InputHash   string
 	Suggestions []string
+	Warnings    []string
 	CreatedAt   time.Time
 }

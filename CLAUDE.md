@@ -17,7 +17,7 @@ CVs: upload + background parse, editor content, versions/history, templates, pho
 - Internal: `GET /internal/resumes/:id/pdf|original` (email-api), `POST /internal/tips/send` (schedule-api), `DELETE /internal/users/:id`.
 
 ## Data, peers, events
-- Tables: `templates`, `resumes`, `resume_versions`, `resume_files` (bytea `data`; `kind` original | export | photo), `resume_downloads`, `cv_tips`, `ai_rewrites`. Latest `0006_resumes_pinned.sql`.
+- Tables: `templates`, `resumes`, `resume_versions`, `resume_files` (bytea `data`; `kind` original | export | photo), `resume_downloads`, `cv_tips`, `ai_rewrites`. Latest `0007_ai_rewrite_warnings.sql`.
 - Peers: ai (`/ai/resume/parse`, `/ai/resume/rewrite`), payments (`/internal/quotas/:userId`).
 - Publishes `cv.first_imported`, `cv.tips`. Consumes nothing.
 - `core/`: `PDFExporter` (go-pdf/fpdf, embedded `core/fonts`, `stamp_mark.png`), hand-built DOCX exporter, PDF text (`ledongthuc/pdf`), `photoextract.go`, `ats.go` rule engine.
@@ -27,7 +27,7 @@ CVs: upload + background parse, editor content, versions/history, templates, pho
 - 402 from payments quotas: new CV beyond `resumes` (versions never limited); export when `cv_downloads` used up (DOCX subscribers only); rewrite beyond `ai_rewrites_per_month` (UTC month); any edit when `cv_edit` = 0.
 - Read-only CVs (`services/locked.go`): `cv_edit` = 0 locks all; over the plan's CV limit only the chosen (`PUT /editable`) or latest-modified stays editable. Nothing deleted. payments-api down = nothing locked.
 - Exports without a plan carry the 9itchi stamp; filename `prenom_nom`. PDF attached to applications is generated on demand, unstamped, not counted.
-- Rewrite cached in `ai_rewrites` (same text = no new count). Restore saves the replaced content first (undoable). Duplicate counts against the CV limit. Photo max 2 MB JPEG/PNG.
+- Rewrite cached in `ai_rewrites` (same text = no new count) with ai-api `warnings` (`new_numbers`, `too_long`; never blocking, `[]` when none), also on cache hits. Restore saves the replaced content first (undoable). Duplicate counts against the CV limit. Photo max 2 MB JPEG/PNG.
 - Upload parse in background (`parse_status`); never overwrites user edits; photo-only CVs read by ai-api vision; embedded photo imported unless one is set.
 - Tips: max 1/week per student, idle CVs first; resume only emits `cv.tips`. Other users' resumes = 404.
 

@@ -61,13 +61,14 @@ type fakeRewriter struct {
 	calls int
 	in    core.RewriteInput
 	out   []string
+	warn  []string
 	err   error
 }
 
-func (f *fakeRewriter) Rewrite(_ context.Context, in core.RewriteInput) ([]string, error) {
+func (f *fakeRewriter) Rewrite(_ context.Context, in core.RewriteInput) ([]string, []string, error) {
 	f.calls++
 	f.in = in
-	return f.out, f.err
+	return f.out, f.warn, f.err
 }
 
 type limitsOf map[string]int
@@ -167,4 +168,28 @@ func TestRewritesOfLastMonthDoNotCount(t *testing.T) {
 	repo.at = time.Date(2026, 5, 2, 9, 0, 0, 0, time.UTC)
 	_, apiErr = svc.Rewrite(context.Background(), uid, rid, api.RewriteRequest{Section: "bullet", Text: "mai"})
 	require.Nil(t, apiErr, "April's rewrite is not counted in May")
+}
+
+func TestRewritePassesWarningsAndCachesThem(t *testing.T) {
+	svc, _, ai := newRewrite(nil)
+	ai.warn = []string{"new_numbers", "too_long"}
+	req := api.RewriteRequest{Section: "bullet", Text: "page de réservation"}
+
+	res, apiErr := svc.Rewrite(context.Background(), uid, rid, req)
+	require.Nil(t, apiErr)
+	assert.Equal(t, []string{"new_numbers", "too_long"}, res.Warnings)
+
+	ai.warn = nil
+	res, apiErr = svc.Rewrite(context.Background(), uid, rid, req)
+	require.Nil(t, apiErr)
+	assert.Equal(t, 1, ai.calls, "cache hit")
+	assert.Equal(t, []string{"new_numbers", "too_long"}, res.Warnings, "stored warnings come back")
+}
+
+func TestRewriteWithoutWarningsGivesEmptyList(t *testing.T) {
+	svc, _, _ := newRewrite(nil)
+	res, apiErr := svc.Rewrite(context.Background(), uid, rid, api.RewriteRequest{Section: "bullet", Text: "texte"})
+	require.Nil(t, apiErr)
+	require.NotNil(t, res.Warnings)
+	assert.Empty(t, res.Warnings)
 }

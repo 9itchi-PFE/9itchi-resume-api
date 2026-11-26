@@ -72,7 +72,7 @@ func (s *rewriteService) Rewrite(ctx context.Context, userID, resumeID string, r
 	found, err := s.repo.Find(ctx, userID, hash)
 	switch {
 	case err == nil:
-		return s.respond(ctx, userID, found.Suggestions)
+		return s.respond(ctx, userID, found.Suggestions, found.Warnings)
 	case !errors.Is(err, repositories.ErrNotFound):
 		return nil, repoError(err, "rewrite not found")
 	}
@@ -86,7 +86,7 @@ func (s *rewriteService) Rewrite(ctx context.Context, userID, resumeID string, r
 	case limit != nil && used >= *limit:
 		return nil, newError(http.StatusPaymentRequired, errRewriteLimit)
 	}
-	suggestions, err := s.ai.Rewrite(ctx, core.RewriteInput{Section: req.Section, Text: text, Language: language, JobTitle: strings.TrimSpace(req.JobTitle)})
+	suggestions, warnings, err := s.ai.Rewrite(ctx, core.RewriteInput{Section: req.Section, Text: text, Language: language, JobTitle: strings.TrimSpace(req.JobTitle)})
 	if err != nil {
 		utils.Logger.Warn("ai rewrite failed", zap.Error(err))
 		return nil, newError(http.StatusBadGateway, "the AI is unavailable, try again")
@@ -94,11 +94,11 @@ func (s *rewriteService) Rewrite(ctx context.Context, userID, resumeID string, r
 	if len(suggestions) == 0 {
 		return nil, newError(http.StatusBadGateway, "the AI is unavailable, try again")
 	}
-	saved, err := s.repo.Save(ctx, &db.AIRewrite{UserID: userID, ResumeID: resumeID, InputHash: hash, Suggestions: suggestions})
+	saved, err := s.repo.Save(ctx, &db.AIRewrite{UserID: userID, ResumeID: resumeID, InputHash: hash, Suggestions: suggestions, Warnings: warnings})
 	if err != nil {
 		return nil, repoError(err, "rewrite not found")
 	}
-	return s.respond(ctx, userID, saved.Suggestions)
+	return s.respond(ctx, userID, saved.Suggestions, saved.Warnings)
 }
 
 // usage is the plan's monthly limit of rewrites and how many were made this calendar month (UTC); nil: no limit.
@@ -123,7 +123,7 @@ func (s *rewriteService) usage(ctx context.Context, userID string) (*int, int, *
 	return &limit, n, nil
 }
 
-func (s *rewriteService) respond(ctx context.Context, userID string, suggestions []string) (*api.RewriteResponse, *models.ApiError) {
+func (s *rewriteService) respond(ctx context.Context, userID string, suggestions, warnings []string) (*api.RewriteResponse, *models.ApiError) {
 	limit, used, apiErr := s.usage(ctx, userID)
 	if apiErr != nil {
 		return nil, apiErr
@@ -131,5 +131,8 @@ func (s *rewriteService) respond(ctx context.Context, userID string, suggestions
 	if suggestions == nil {
 		suggestions = []string{}
 	}
-	return &api.RewriteResponse{Suggestions: suggestions, Limit: limit, Used: used}, nil
+	if warnings == nil {
+		warnings = []string{}
+	}
+	return &api.RewriteResponse{Suggestions: suggestions, Warnings: warnings, Limit: limit, Used: used}, nil
 }
