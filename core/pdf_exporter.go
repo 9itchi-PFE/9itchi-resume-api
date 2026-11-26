@@ -19,6 +19,8 @@ import (
 //     blue uppercase section titles over a blue rule, dates on the right.
 //   - modern: a dark side column (#1F2A44) with photo, contact, skills and languages; Source Serif 4 titles.
 //   - compact: black and white, optional round photo above the name, centred name, bold uppercase titles over a black rule.
+//   - sidebar, split, banner: two columns (core/two_column.go): a full-height accent side column, a header over two
+//     columns parted by a thin rule, or an accent band over a grey side column.
 //
 // All stay text based (no text in images) so applicant tracking systems can read them.
 
@@ -48,6 +50,11 @@ var (
 	cvSideTxt = rgb{232, 236, 244} // #E8ECF4
 	cvBlack   = rgb{17, 17, 17}    // #111111
 	cvCompact = rgb{68, 68, 68}    // #444444
+	cvSlate   = rgb{31, 58, 95}    // #1F3A5F, sidebar
+	cvTeal    = rgb{46, 107, 94}   // #2E6B5E, split
+	cvWine    = rgb{122, 46, 59}   // #7A2E3B, banner
+	cvTint    = rgb{243, 244, 246} // #F3F4F6, banner side column
+	cvDivider = rgb{217, 220, 225} // #D9DCE1, split column rule
 )
 
 type pdfExporter struct{}
@@ -173,6 +180,7 @@ type cv struct {
 	x, w    float64 // column, mm
 	pending []seg   // left side of the next row, set by the row's left callback
 	locCol  rgb     // color of locations
+	iconBg  *rgb    // color under the contact icons; nil is white
 	lang    string
 }
 
@@ -209,8 +217,33 @@ func (d *cv) need(h float64) {
 	_, ph := d.pdf.GetPageSize()
 	_, bm := d.pdf.GetAutoPageBreak()
 	if d.pdf.GetY()+h > ph-bm {
-		d.pdf.AddPage()
+		d.nextPage()
 	}
+}
+
+// nextPage moves on to the next page: the one another column already opened (two-column layouts), else a new one.
+func (d *cv) nextPage() {
+	pdf := d.pdf
+	if pdf.PageNo() >= pdf.PageCount() {
+		pdf.AddPage()
+		return
+	}
+	left, top, _, _ := pdf.GetMargins()
+	d.toPage(pdf.PageNo() + 1)
+	pdf.SetXY(left, top)
+}
+
+// toPage makes page n current again. fpdf only writes a font or fill color when it changes, so both are written
+// again on that page: its own stream may still hold the ones of another column.
+func (d *cv) toPage(n int) {
+	pdf := d.pdf
+	if n == pdf.PageNo() {
+		return
+	}
+	pdf.SetPage(n)
+	size, _ := pdf.GetFontSize()
+	pdf.SetFontSize(size)
+	pdf.SetFillColor(pdf.GetFillColor())
 }
 
 // row writes left text and right text on one line; the left text wraps before the right one.
@@ -498,7 +531,8 @@ func (pdfExporter) Render(ctx context.Context, c api.ResumeContent, layout strin
 	if !d.lk.showPhoto {
 		opts.Photo = nil
 	}
-	if d.lk.bg != nil && layout != "modern" {
+	spec, twoColumns := twoColSpecs[layout]
+	if d.lk.bg != nil && !twoColumns {
 		pdf.SetHeaderFunc(func() {
 			pdf.SetFillColor(d.lk.bg.r, d.lk.bg.g, d.lk.bg.b)
 			pdf.Rect(0, 0, 210, 297, "F")
@@ -507,10 +541,10 @@ func (pdfExporter) Render(ctx context.Context, c api.ResumeContent, layout strin
 	if opts.Branded {
 		pdf.SetFooterFunc(d.stamp)
 	}
-	switch layout {
-	case "modern":
-		d.modern(opts)
-	case "compact":
+	switch {
+	case twoColumns:
+		d.twoColumns(opts, layout, spec)
+	case layout == "compact":
 		d.compact(opts)
 	default:
 		d.classic(opts)
@@ -578,11 +612,13 @@ func (d *cv) classic(opts RenderOptions) {
 
 	head := func(t string) {
 		d.need(12)
-		pdf.Ln(2.4)
+		pdf.Ln(sectionGap(lk.style, 2.4))
 		d.font(sans, lk.headFont(""), lk.head, lk.col("headings", cvBlue))
 		pdf.SetX(d.x)
 		pdf.CellFormat(d.w, d.lh(lk.head)*0.9, cleanText(lk.heading(t)), "", 1, "L", false, 0, "")
-		d.rule(blue, 0.35)
+		if rw := headingRuleWidth(lk.style, 0.35); rw > 0 {
+			d.rule(blue, rw)
+		}
 		pdf.Ln(1)
 	}
 	b, eb := d.body, lk.entry
@@ -638,10 +674,15 @@ func (d *cv) classic(opts RenderOptions) {
 				return
 			}
 			head(d.titles["experience"])
-			for i, e := range d.c.Experience {
+			for i, g := range roleGroups(d.c.Experience, lk.style) {
 				if i > 0 {
 					between()
 				}
+				if len(g) > 1 {
+					d.groupedRoles(g, expEntry, b, ink, between)
+					continue
+				}
+				e := g[0]
 				if ly, ok := entryLook("classic", "experience", lk.style); ok {
 					d.entryRows(ly, entryParts{title: e.Title, subtitle: e.Company, kind: e.Kind, url: e.URL}, dates(e.Start, e.End), e.Location, expEntry, eb)
 				} else {
@@ -683,6 +724,10 @@ func (d *cv) classic(opts RenderOptions) {
 				return
 			}
 			head(d.titles["languages"])
+			if inlineLanguages(lk.style) {
+				d.languagesInline(b, ink, ink)
+				return
+			}
 			for _, l := range d.c.Languages {
 				name, level := splitLanguage(l)
 				d.row(d.segs(label(name)), rightOther, level, eb)
@@ -785,13 +830,13 @@ func (d *cv) skillsGrid(head func(string), size float64, col rgb) {
 		}
 		head(d.titles["skills"])
 		d.font(sans, "", size, col)
-		d.para(strings.Join(nonEmpty(d.c.Skills...), ", "), size)
+		d.para(strings.Join(nonEmpty(d.c.Skills...), skillSep(d.lk.style, ", ")), size)
 		return
 	}
 	head(d.titles["skills"])
 	lw := d.w * 0.38
 	for _, g := range d.c.SkillGroups {
-		items := strings.Join(nonEmpty(g.Items...), ", ")
+		items := strings.Join(nonEmpty(g.Items...), skillSep(d.lk.style, ", "))
 		if items == "" && g.Label == "" {
 			continue
 		}
@@ -805,212 +850,6 @@ func (d *cv) skillsGrid(head func(string), size float64, col rgb) {
 		pdf.MultiCell(d.w-lw, d.lh(size), cleanText(items), "", "L", false)
 		if pdf.GetY() < y1 {
 			pdf.SetY(y1)
-		}
-	}
-}
-
-// ---- Moderne ----
-
-func (d *cv) modern(opts RenderOptions) {
-	pdf := d.pdf
-	lk := d.lk
-	const (
-		sideW = 210 * 0.34
-		pad   = 7.0
-	)
-	top, mainP := lk.my, lk.mx
-	side := lk.colKeep("rules", cvNavy)
-	d.body = lk.base
-	pdf.SetHeaderFunc(func() {
-		if lk.bg != nil {
-			pdf.SetFillColor(lk.bg.r, lk.bg.g, lk.bg.b)
-			pdf.Rect(0, 0, 210, 297, "F")
-		}
-		pdf.SetFillColor(side.r, side.g, side.b)
-		pdf.Rect(0, 0, sideW, 297, "F")
-	})
-	pdf.SetMargins(pad, top, 210-sideW+pad)
-	pdf.SetAutoPageBreak(false, top)
-	pdf.AddPage()
-
-	// Side column.
-	d.x, d.w = pad, sideW-2*pad
-	y := top
-	if d.photo(opts, sideW/2, y+11, 11, nil) {
-		y += 22 + 4
-	}
-	pdf.SetY(y)
-	b := d.body
-	eb := lk.entry
-	sideHead := func(t string) {
-		pdf.Ln(2.5)
-		d.font(sans, "B", 9, cvSideTxt)
-		pdf.SetX(d.x)
-		pdf.CellFormat(d.w, d.lh(9), cleanText(spaced(strings.ToUpper(t))), "", 1, "L", false, 0, "")
-		pdf.Ln(0.6)
-	}
-	sideLines := func(lines ...string) {
-		d.font(sans, "", b-0.5, cvSideTxt)
-		for _, l := range nonEmpty(lines...) {
-			d.para(l, b-0.5)
-		}
-	}
-	var contact []string
-	contact = append(contact, d.c.Contact.Email, d.c.Contact.Phone, d.c.Contact.Location)
-	for _, l := range d.c.Contact.Links {
-		contact = append(contact, shortLink(l))
-	}
-	if len(nonEmpty(contact...)) > 0 {
-		sideHead(d.titles["contact"])
-		sideLines(contact...)
-	}
-	sideSections := map[string]func(){
-		"skills": func() {
-			if len(d.c.SkillGroups) == 0 && len(nonEmpty(d.c.Skills...)) == 0 {
-				return
-			}
-			sideHead(d.titles["skills"])
-			if len(d.c.SkillGroups) > 0 {
-				for _, g := range d.c.SkillGroups {
-					if g.Label != "" {
-						d.font(sansSemi, "", b-0.5, cvSideTxt)
-						d.para(g.Label, b-0.5)
-					}
-					sideLines(strings.Join(nonEmpty(g.Items...), " · "))
-				}
-			} else {
-				sk := nonEmpty(d.c.Skills...)
-				for i := 0; i < len(sk); i += 2 {
-					sideLines(strings.Join(sk[i:min(i+2, len(sk))], " · "))
-				}
-			}
-		},
-		"languages": func() {
-			if len(d.c.Languages) == 0 {
-				return
-			}
-			sideHead(d.titles["languages"])
-			for _, l := range d.c.Languages {
-				name, level := splitLanguage(l)
-				sideLines(join(" · ", name, level))
-			}
-		},
-	}
-	order := d.c.SectionOrder()
-	for _, key := range order {
-		if f := sideSections[key]; f != nil {
-			f()
-		}
-	}
-
-	// Main column.
-	d.x, d.w = sideW+mainP, 210-sideW-2*mainP
-	pdf.SetMargins(d.x, top, mainP)
-	pdf.SetAutoPageBreak(true, top)
-	pdf.SetXY(d.x, top)
-	ink := lk.ink(cvInk)
-	d.font(d.nameFamily(), "B", lk.name, lk.col("name", cvNavy))
-	d.para(d.c.Contact.Name, lk.name)
-	if d.c.Contact.Headline != "" {
-		pdf.Ln(0.5)
-		d.font(sans, "", lk.title, lk.col("title", cvMuted))
-		d.para(d.c.Contact.Headline, lk.title)
-	}
-	head := func(t string) {
-		d.need(12)
-		pdf.Ln(3)
-		d.font(d.nameFamily(), lk.headFont("B"), lk.head, lk.col("headings", cvNavy))
-		pdf.SetX(d.x)
-		pdf.CellFormat(d.w, d.lh(lk.head), cleanText(lk.heading(t)), "", 1, "L", false, 0, "")
-		pdf.Ln(0.4)
-	}
-	bold := func(t string) seg { return seg{text: t, family: sans, style: "B", col: lk.col("entry_title", ink)} }
-	d.locCol = lk.col("location", cvMuted)
-	muted := func(t string) seg { return seg{text: t, family: sans, style: pick(lk.subStyle, ""), col: cvMuted} }
-	locSeg := func(t string) seg { return seg{text: t, family: sans, style: pick(lk.subStyle, ""), col: d.locCol} }
-	right := func() { d.font(sans, pick(lk.dateStyle, ""), eb, lk.col("dates", cvMuted)) }
-	between := func() { pdf.Ln(lk.gapOr(0.8)) }
-	rightLoc := func() { d.font(sans, pick(lk.dateStyle, ""), eb, d.locCol) }
-	// Used only when the user chose an entry layout.
-	sideEntry := entryStyle{bold: bold, sub: muted, kind: muted, loc: locSeg, date: right, locR: rightLoc}
-	mainSections := map[string]func(){
-		"summary": func() {
-			if s := strings.TrimSpace(d.c.Summary); s != "" {
-				head(d.titles["summary"])
-				d.font(sans, "", b, ink)
-				d.para(s, b)
-			}
-		},
-		"education": func() {
-			if len(d.c.Education) == 0 {
-				return
-			}
-			head(d.titles["education"])
-			for _, e := range d.c.Education {
-				if ly, ok := entryLook("modern", "education", lk.style); ok {
-					d.entryRows(ly, entryParts{title: e.Degree, subtitle: e.School, url: e.URL}, dates(e.Start, e.End), e.Location, sideEntry, eb)
-				} else {
-					d.row(d.segs(linked(bold(join(" — ", e.School, e.Degree)), e.URL)), right, dates(e.Start, e.End), eb)
-					if e.Location != "" {
-						d.row(d.segs(locSeg(e.Location)), right, "", eb)
-					}
-				}
-				between()
-			}
-		},
-		"experience": func() {
-			if len(d.c.Experience) == 0 {
-				return
-			}
-			head(d.titles["experience"])
-			for _, e := range d.c.Experience {
-				if ly, ok := entryLook("modern", "experience", lk.style); ok {
-					d.entryRows(ly, entryParts{title: e.Title, subtitle: e.Company, kind: e.Kind, url: e.URL}, dates(e.Start, e.End), e.Location, sideEntry, eb)
-				} else {
-					d.row(d.segs(linked(bold(join(" — ", e.Title, e.Company)), e.URL)), right, dates(e.Start, e.End), eb)
-					if e.Kind != "" || e.Location != "" {
-						var parts []seg
-						if e.Kind != "" {
-							parts = append(parts, muted(e.Kind))
-						}
-						if e.Location != "" {
-							parts = append(parts, locSeg(prefix(" · ", e.Kind)+e.Location))
-						}
-						d.row(d.segs(parts...), right, "", eb)
-					}
-				}
-				d.bullets(e.Description, b, ink)
-				between()
-			}
-		},
-		"projects": func() {
-			if len(d.c.Projects) == 0 {
-				return
-			}
-			head(d.titles["projects"])
-			for _, p := range d.c.Projects {
-				d.row(d.segs(linked(bold(p.Name), p.URL)), right, p.Year, eb)
-				d.bullets(p.Description, b, ink)
-				d.tech(p, b, ink)
-				between()
-			}
-		},
-		"certifications": func() {
-			if len(d.c.Certifications) == 0 {
-				return
-			}
-			head(d.titles["certifications"])
-			for _, ce := range d.c.Certifications {
-				d.row(d.segs(linked(bold(ce.Name), ce.URL), muted(prefix(", ", ce.Issuer))), right, ce.Year, eb)
-			}
-		},
-	}
-	for _, key := range order {
-		if f := mainSections[key]; f != nil {
-			f()
-		} else if x, ok := extraAt(d.c, key); ok && len(nonEmpty(x.Items...)) > 0 {
-			head(x.Title)
-			d.bullets(x.Items, b, ink)
 		}
 	}
 }
@@ -1077,11 +916,13 @@ func (d *cv) compact(opts RenderOptions) {
 	}
 	head := func(t string) {
 		d.need(12)
-		pdf.Ln(2.6)
+		pdf.Ln(sectionGap(lk.style, 2.6))
 		d.font(sans, lk.headFont("B"), lk.head, lk.col("headings", cvBlack))
 		pdf.SetX(d.x)
 		pdf.CellFormat(d.w, d.lh(lk.head)*0.9, cleanText(lk.heading(t)), "", 1, "L", false, 0, "")
-		d.rule(rule, 0.3)
+		if rw := headingRuleWidth(lk.style, 0.3); rw > 0 {
+			d.rule(rule, rw)
+		}
 		pdf.Ln(1)
 	}
 	bold := func(t string) seg { return seg{text: t, family: sans, style: "B", col: lk.col("entry_title", ink)} }
@@ -1120,7 +961,13 @@ func (d *cv) compact(opts RenderOptions) {
 				return
 			}
 			head(d.titles["experience"])
-			for _, e := range d.c.Experience {
+			for _, g := range roleGroups(d.c.Experience, lk.style) {
+				if len(g) > 1 {
+					d.groupedRoles(g, flatEntry, b, ink, func() { pdf.Ln(lk.gapOr(0)) })
+					pdf.Ln(lk.gapOr(0))
+					continue
+				}
+				e := g[0]
 				if ly, ok := entryLook("compact", "experience", lk.style); ok {
 					d.entryRows(ly, entryParts{title: e.Title, subtitle: e.Company, kind: e.Kind, url: e.URL}, dates(e.Start, e.End), e.Location, flatEntry, eb)
 				} else {
@@ -1147,12 +994,13 @@ func (d *cv) compact(opts RenderOptions) {
 				return
 			}
 			head(d.titles["skills"])
+			sep := skillSep(lk.style, ", ")
 			if len(d.c.SkillGroups) == 0 {
 				d.font(sans, "", b, ink)
-				d.para(strings.Join(nonEmpty(d.c.Skills...), ", "), b)
+				d.para(strings.Join(nonEmpty(d.c.Skills...), sep), b)
 			}
 			for _, g := range d.c.SkillGroups {
-				d.row(d.segs(bold(prefix("", g.Label)+suffixIf(g.Label, " : ")), plain(strings.Join(nonEmpty(g.Items...), ", "))), right, "", eb)
+				d.row(d.segs(bold(prefix("", g.Label)+suffixIf(g.Label, " : ")), plain(strings.Join(nonEmpty(g.Items...), sep))), right, "", eb)
 			}
 		},
 		"certifications": func() {
@@ -1169,6 +1017,10 @@ func (d *cv) compact(opts RenderOptions) {
 				return
 			}
 			head(d.titles["languages"])
+			if inlineLanguages(lk.style) {
+				d.languagesInline(b, ink, ink)
+				return
+			}
 			var parts []string
 			for _, l := range d.c.Languages {
 				name, level := splitLanguage(l)

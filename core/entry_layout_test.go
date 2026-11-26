@@ -94,13 +94,13 @@ func TestEntryLayoutPDFAndDOCX(t *testing.T) {
 		for _, e := range []Exporter{NewPDFExporter(), NewDOCXExporter()} {
 			t.Run(layout+"/"+e.Format(), func(t *testing.T) {
 				lines := entryLines(t, e, layout, inlineSub)
-				assert.Contains(t, lines[max(lineWith(lines, "Acme"), 0)], "Acme (Stage) — Developer")
+				assert.Contains(t, lines[max(lineWith(lines, "Acme"), 0)], "Acme (Stage), Developer")
 				assert.Contains(t, lines[max(lineWith(lines, "Acme"), 0)], "Tunis", "location follows the text on the same row")
-				assert.Contains(t, lines[max(lineWith(lines, "MIT"), 0)], "MIT — Bachelor")
+				assert.Contains(t, lines[max(lineWith(lines, "MIT"), 0)], "MIT, Bachelor")
 
 				lines = entryLines(t, e, layout, inlineTitle)
-				assert.Contains(t, lines[max(lineWith(lines, "Developer"), 0)], "Developer — Acme (Stage)")
-				assert.Contains(t, lines[max(lineWith(lines, "Bachelor"), 0)], "Bachelor — MIT")
+				assert.Contains(t, lines[max(lineWith(lines, "Developer"), 0)], "Developer, Acme (Stage)")
+				assert.Contains(t, lines[max(lineWith(lines, "Bachelor"), 0)], "Bachelor, MIT")
 
 				lines = entryLines(t, e, layout, stackedTitle)
 				title, company := lineWith(lines, "Developer"), lineWith(lines, "Acme")

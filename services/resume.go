@@ -124,6 +124,14 @@ func NewResumeService(
 	return s
 }
 
+// withDefaultStyle gives a new CV the default look when it comes without a style of its own.
+func withDefaultStyle(c api.ResumeContent) api.ResumeContent {
+	if c.Style == nil {
+		c.Style = api.DefaultCVStyle()
+	}
+	return c
+}
+
 // encodeContent validates and serialises content for the jsonb column.
 func encodeContent(c api.ResumeContent) ([]byte, *models.ApiError) {
 	if !c.Style.Valid() {
@@ -217,7 +225,7 @@ func (s *resumeService) UploadResume(ctx context.Context, userID string, filenam
 	if r := []rune(title); len(r) > api.MaxTitleLen {
 		title = string(r[:api.MaxTitleLen])
 	}
-	empty, apiErr := encodeContent(api.ResumeContent{})
+	empty, apiErr := encodeContent(withDefaultStyle(api.ResumeContent{}))
 	if apiErr != nil {
 		return nil, apiErr
 	}
@@ -302,7 +310,7 @@ func (s *resumeService) CreateResume(ctx context.Context, userID string, req api
 	if apiErr := validateTitle(req.Title); apiErr != nil {
 		return nil, apiErr
 	}
-	content, apiErr := encodeContent(req.Content)
+	content, apiErr := encodeContent(withDefaultStyle(req.Content))
 	if apiErr != nil {
 		return nil, apiErr
 	}

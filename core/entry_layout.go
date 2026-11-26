@@ -1,10 +1,14 @@
 package core
 
-import "9itchi-resume-api/models/api"
+import (
+	"strings"
+
+	"9itchi-resume-api/models/api"
+)
 
 // entryLayout is how the title and the subtitle of an experience or education entry are laid out.
 type entryLayout struct {
-	inline   bool // one row "first â€” second"; otherwise two rows
+	inline   bool // one row "first, second" (second in the subtitle style); otherwise two rows
 	subFirst bool // the subtitle (company, school) comes before the title (job title, degree)
 }
 
@@ -13,12 +17,19 @@ var entryDefaults = map[string]map[string]entryLayout{
 	"classic": {"experience": {}, "education": {}},
 	"modern":  {"experience": {inline: true}, "education": {inline: true, subFirst: true}},
 	"compact": {"experience": {inline: true, subFirst: true}, "education": {inline: true, subFirst: true}},
+	"sidebar": {"experience": {}, "education": {}},
+	"split":   {"experience": {}, "education": {}},
+	"banner":  {"experience": {}, "education": {}},
 }
 
 // entryLook resolves the layout of a section ("experience" or "education"). ok is false when the user chose neither
-// entry_layout nor entry_order, so the caller keeps the template's own drawing code.
+// entry_layout nor entry_order (nor education_order for education), so the caller keeps the template's own drawing code.
 func entryLook(layout, section string, s *api.CVStyle) (l entryLayout, ok bool) {
-	if s == nil || (s.EntryLayout == "" && s.EntryOrder == "") {
+	eduOrder := ""
+	if s != nil && section == "education" {
+		eduOrder = s.EducationOrder
+	}
+	if s == nil || (s.EntryLayout == "" && s.EntryOrder == "" && eduOrder == "") {
 		return entryLayout{}, false
 	}
 	l = entryDefaults[layout][section]
@@ -29,6 +40,12 @@ func entryLook(layout, section string, s *api.CVStyle) (l entryLayout, ok bool) 
 		l.inline = true
 	}
 	switch s.EntryOrder {
+	case "title_first":
+		l.subFirst = false
+	case "subtitle_first":
+		l.subFirst = true
+	}
+	switch eduOrder {
 	case "title_first":
 		l.subFirst = false
 	case "subtitle_first":
@@ -76,7 +93,10 @@ type entryStyle struct {
 func (d *cv) entryRows(l entryLayout, p entryParts, dateText, loc string, st entryStyle, size float64) {
 	first, second := p.firstSecond(l)
 	if l.inline {
-		segs := []seg{linked(st.bold(join(" — ", first, second)), p.url)}
+		segs := []seg{linked(st.bold(first), p.url)}
+		if second != "" {
+			segs = append(segs, st.sub(afterFirst(first, second)))
+		}
 		if loc != "" {
 			segs = append(segs, st.loc(prefix(", ", loc)))
 		}
@@ -114,7 +134,10 @@ type docxEntryStyle struct {
 func entryXML(width int, l entryLayout, p entryParts, dateText, loc string, st docxEntryStyle) string {
 	first, second := p.firstSecond(l)
 	if l.inline {
-		left := []string{run(join(" — ", first, second), st.bold)}
+		left := []string{run(first, st.bold)}
+		if second != "" {
+			left = append(left, run(afterFirst(first, second), st.sub))
+		}
 		if loc != "" {
 			left = append(left, run(prefix(", ", loc), st.loc))
 		}
@@ -139,4 +162,12 @@ func entryXML(width int, l entryLayout, p entryParts, dateText, loc string, st d
 		out += rowP(width, rest, loc, st.loc, pp{})
 	}
 	return out
+}
+
+// afterFirst is the second text of an inline row, set off from the first by a comma when both are there.
+func afterFirst(first, second string) string {
+	if strings.TrimSpace(first) == "" {
+		return second
+	}
+	return prefix(", ", second)
 }

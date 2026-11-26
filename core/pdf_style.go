@@ -38,6 +38,9 @@ var layoutLooks = map[string]layoutLook{
 	"classic": {base: 10.5, name: 23, title: 12, head: 13, mx: 14, my: 12, upper: true},
 	"modern":  {base: 10, name: 22, title: 10.5, head: 13, mx: 9, my: 12, nameSerif: true},
 	"compact": {base: 10, name: 17, title: 10, head: 11, mx: 15, my: 12, upper: true, center: true},
+	"sidebar": {base: 10, name: 22, title: 11, head: 12, mx: 8, my: 12, upper: true},
+	"split":   {base: 10, name: 22, title: 11, head: 12, mx: 12, my: 12, upper: true},
+	"banner":  {base: 10, name: 24, title: 11, head: 12, mx: 10, my: 12, upper: true},
 }
 
 func hexRGB(s string) *rgb {
@@ -177,11 +180,14 @@ func (l look) col(target string, native rgb) rgb {
 	if l.style.Accents(target) {
 		return *l.accent
 	}
-	if native == cvBlue || native == cvNavy {
+	if accentNatives[native] {
 		return cvInk
 	}
 	return native
 }
+
+// accentNatives are the templates' own accents, which give way to the ink once the user picks an accent.
+var accentNatives = map[rgb]bool{cvBlue: true, cvNavy: true, cvSlate: true, cvTeal: true, cvWine: true}
 
 // colKeep is col for a fill that has no neutral color (the modern side column): the template color stays unless picked.
 func (l look) colKeep(target string, native rgb) rgb {

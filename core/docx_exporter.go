@@ -114,7 +114,8 @@ type pp struct {
 	bullet           bool
 	borderBottom     string // colour
 	borderTop        string
-	borderSz         int // eighths of a point
+	borderLeft       string // colour of a thin line left of the text
+	borderSz         int    // eighths of a point
 	keepNext         bool
 }
 
@@ -126,7 +127,7 @@ func (p pp) xml() string {
 	if p.bullet {
 		b.WriteString(`<w:numPr><w:ilvl w:val="0"/><w:numId w:val="1"/></w:numPr>`)
 	}
-	if p.borderBottom != "" || p.borderTop != "" {
+	if p.borderBottom != "" || p.borderTop != "" || p.borderLeft != "" {
 		sz := p.borderSz
 		if sz == 0 {
 			sz = 6
@@ -134,6 +135,9 @@ func (p pp) xml() string {
 		b.WriteString(`<w:pBdr>`)
 		if p.borderTop != "" {
 			fmt.Fprintf(&b, `<w:top w:val="single" w:sz="%d" w:space="4" w:color="%s"/>`, sz, p.borderTop)
+		}
+		if p.borderLeft != "" {
+			fmt.Fprintf(&b, `<w:left w:val="single" w:sz="6" w:space="6" w:color="%s"/>`, p.borderLeft)
 		}
 		if p.borderBottom != "" {
 			fmt.Fprintf(&b, `<w:bottom w:val="single" w:sz="%d" w:space="1" w:color="%s"/>`, sz, p.borderBottom)
@@ -256,10 +260,13 @@ func (docxExporter) Render(ctx context.Context, c api.ResumeContent, layout stri
 		d.photo = newDocxPhoto(opts.Photo, opts.PhotoFormat)
 	}
 	var sect string
-	switch layout {
-	case "modern":
+	sp, twoColumns := twoColSpecs[layout]
+	switch {
+	case twoColumns && !sp.legacy:
+		sect = d.twoColumns(layout, sp, opts.Branded)
+	case layout == "modern":
 		sect = d.modern(opts.Branded)
-	case "compact":
+	case layout == "compact":
 		sect = d.compact()
 	default:
 		sect = d.classic()
@@ -325,8 +332,13 @@ func (d *docx) classic() string {
 	}
 	o := newOrdered(&d.body)
 	o.begin()
+	st := d.c.Style
+	headP := pp{before: sectionGapTw(st, 160), after: 60, keepNext: true}
+	if sz := headingRuleSz(st, 6); sz > 0 {
+		headP.borderBottom, headP.borderSz = hexBlue, sz
+	}
 	heading := func(t string) {
-		d.add(para(pp{before: 160, after: 60, borderBottom: hexBlue, keepNext: true}, run(t, rp{size: 13, color: hexBlue, caps: true})))
+		d.add(para(headP, run(t, rp{size: 13, color: hexBlue, caps: true})))
 	}
 	if s := strings.TrimSpace(d.c.Summary); s != "" {
 		heading(d.titles["summary"])
@@ -354,11 +366,16 @@ func (d *docx) classic() string {
 	o.cut("education")
 	if len(d.c.Experience) > 0 {
 		heading(d.titles["experience"])
-		for i, e := range d.c.Experience {
+		for i, g := range roleGroups(d.c.Experience, st) {
 			before := 0
 			if i > 0 {
 				before = 60
 			}
+			if len(g) > 1 {
+				d.add(docxRoleGroup(width, g, docxEntryStyle{bold: bold, kind: ink, loc: ink, date: bold, first: pp{before: before}}, ink, st))
+				continue
+			}
+			e := g[0]
 			if ly, ok := entryLook("classic", "experience", d.c.Style); ok {
 				d.add(entryXML(width, ly, entryParts{title: e.Title, subtitle: e.Company, kind: e.Kind}, dates(e.Start, e.End), e.Location,
 					docxEntryStyle{bold: bold, sub: blue, kind: ink, loc: ink, date: bold, first: pp{before: before, keepNext: true}}))
@@ -388,12 +405,13 @@ func (d *docx) classic() string {
 	o.cut("projects")
 	if len(d.c.SkillGroups) > 0 || len(nonEmpty(d.c.Skills...)) > 0 {
 		heading(d.titles["skills"])
+		sep := skillSep(st, ", ")
 		if len(d.c.SkillGroups) == 0 {
-			d.add(para(pp{}, run(strings.Join(nonEmpty(d.c.Skills...), ", "), ink)))
+			d.add(para(pp{}, run(strings.Join(nonEmpty(d.c.Skills...), sep), ink)))
 		}
 		col := int(float64(width) * 0.38)
 		for _, g := range d.c.SkillGroups {
-			d.add(para(pp{leftTab: col, indLeft: col, hanging: col}, run(g.Label, bold), tabRun, run(strings.Join(nonEmpty(g.Items...), ", "), ink)))
+			d.add(para(pp{leftTab: col, indLeft: col, hanging: col}, run(g.Label, bold), tabRun, run(strings.Join(nonEmpty(g.Items...), sep), ink)))
 		}
 	}
 	o.cut("skills")
@@ -406,9 +424,13 @@ func (d *docx) classic() string {
 	o.cut("certifications")
 	if len(d.c.Languages) > 0 {
 		heading(d.titles["languages"])
-		for _, l := range d.c.Languages {
-			name, level := splitLanguage(l)
-			d.add(rowP(width, []string{run(name, bold)}, level, ink, pp{}))
+		if inlineLanguages(st) {
+			d.add(docxLanguagesInline(d.c.Languages, bold, ink, pp{}))
+		} else {
+			for _, l := range d.c.Languages {
+				name, level := splitLanguage(l)
+				d.add(rowP(width, []string{run(name, bold)}, level, ink, pp{}))
+			}
 		}
 	}
 	o.cut("languages")
@@ -484,8 +506,9 @@ func (d *docx) modern(branded bool) string {
 	if pic := d.drawing(22, ""); pic != "" {
 		s.WriteString(para(pp{align: "center", after: 120}, pic))
 	}
+	st := d.c.Style
 	sideHead := func(t string) {
-		s.WriteString(para(pp{before: 160, after: 40, keepNext: true}, run(t, rp{size: 9, bold: true, caps: true, color: hexSide, spacing: 30})))
+		s.WriteString(para(pp{before: sectionGapTw(st, 160), after: 40, keepNext: true}, run(t, rp{size: 9, bold: true, caps: true, color: hexSide, spacing: 30})))
 	}
 	sideLine := func(t string, p rp) {
 		if strings.TrimSpace(t) != "" {
@@ -506,7 +529,10 @@ func (d *docx) modern(branded bool) string {
 	os.begin()
 	if len(d.c.SkillGroups) > 0 || len(nonEmpty(d.c.Skills...)) > 0 {
 		sideHead(d.titles["skills"])
-		if len(d.c.SkillGroups) == 0 {
+		sep := skillSep(st, " · ")
+		if len(d.c.SkillGroups) == 0 && st != nil && st.SkillsStyle != "" {
+			sideLine(strings.Join(nonEmpty(d.c.Skills...), sep), side)
+		} else if len(d.c.SkillGroups) == 0 {
 			sk := nonEmpty(d.c.Skills...)
 			for i := 0; i < len(sk); i += 2 {
 				sideLine(strings.Join(sk[i:min(i+2, len(sk))], " · "), side)
@@ -514,15 +540,19 @@ func (d *docx) modern(branded bool) string {
 		}
 		for _, g := range d.c.SkillGroups {
 			sideLine(g.Label, rp{size: b - 0.5, color: hexSide, bold: true})
-			sideLine(strings.Join(nonEmpty(g.Items...), " · "), side)
+			sideLine(strings.Join(nonEmpty(g.Items...), sep), side)
 		}
 	}
 	os.cut("skills")
 	if len(d.c.Languages) > 0 {
 		sideHead(d.titles["languages"])
-		for _, l := range d.c.Languages {
-			name, level := splitLanguage(l)
-			sideLine(join(" · ", name, level), side)
+		if inlineLanguages(st) {
+			s.WriteString(docxLanguagesInline(d.c.Languages, rp{size: b - 0.5, color: hexSide, bold: true}, side, pp{}))
+		} else {
+			for _, l := range d.c.Languages {
+				name, level := splitLanguage(l)
+				sideLine(join(" · ", name, level), side)
+			}
 		}
 	}
 	os.cut("languages")
@@ -542,8 +572,12 @@ func (d *docx) modern(branded bool) string {
 	}
 	om := newOrdered(&m)
 	om.begin()
+	headP := pp{before: sectionGapTw(st, 180), after: 40, keepNext: true}
+	if sz := headingRuleSz(st, 0); sz > 0 {
+		headP.borderBottom, headP.borderSz = hexNavy, sz
+	}
 	heading := func(t string) {
-		m.WriteString(para(pp{before: 180, after: 40, keepNext: true}, run(t, rp{size: 13, bold: true, color: hexNavy, font: "Cambria"})))
+		m.WriteString(para(headP, run(t, rp{size: 13, bold: true, color: hexNavy, font: "Cambria"})))
 	}
 	if sum := strings.TrimSpace(d.c.Summary); sum != "" {
 		heading(d.titles["summary"])
@@ -573,7 +607,12 @@ func (d *docx) modern(branded bool) string {
 	om.cut("education")
 	if len(d.c.Experience) > 0 {
 		heading(d.titles["experience"])
-		for _, e := range d.c.Experience {
+		for _, g := range roleGroups(d.c.Experience, st) {
+			if len(g) > 1 {
+				m.WriteString(docxRoleGroup(textW, g, docxEntryStyle{bold: bold, kind: muted, loc: muted, date: muted, first: pp{before: 40}}, ink, st))
+				continue
+			}
+			e := g[0]
 			if ly, ok := entryLook("modern", "experience", d.c.Style); ok {
 				m.WriteString(entryXML(textW, ly, entryParts{title: e.Title, subtitle: e.Company, kind: e.Kind}, dates(e.Start, e.End), e.Location,
 					docxEntryStyle{bold: bold, sub: muted, kind: muted, loc: muted, date: muted, first: pp{before: 40, keepNext: true}}))
@@ -660,8 +699,13 @@ func (d *docx) compact() string {
 		d.add(para(pp{before: 100}, run(s, ink)))
 	}
 	o.cut("summary")
+	st := d.c.Style
+	headP := pp{before: sectionGapTw(st, 150), after: 60, keepNext: true}
+	if sz := headingRuleSz(st, 6); sz > 0 {
+		headP.borderBottom, headP.borderSz = hexBlack, sz
+	}
 	heading := func(t string) {
-		d.add(para(pp{before: 150, after: 60, borderBottom: hexBlack, borderSz: 6, keepNext: true}, run(t, rp{size: 11, bold: true, caps: true, color: hexBlack})))
+		d.add(para(headP, run(t, rp{size: 11, bold: true, caps: true, color: hexBlack})))
 	}
 	if len(d.c.Education) > 0 {
 		heading(d.titles["education"])
@@ -677,7 +721,12 @@ func (d *docx) compact() string {
 	o.cut("education")
 	if len(d.c.Experience) > 0 {
 		heading(d.titles["experience"])
-		for _, e := range d.c.Experience {
+		for _, g := range roleGroups(d.c.Experience, st) {
+			if len(g) > 1 {
+				d.add(docxRoleGroup(width, g, docxEntryStyle{bold: bold, kind: ink, loc: ink, date: ink}, ink, st))
+				continue
+			}
+			e := g[0]
 			if ly, ok := entryLook("compact", "experience", d.c.Style); ok {
 				d.add(entryXML(width, ly, entryParts{title: e.Title, subtitle: e.Company, kind: e.Kind}, dates(e.Start, e.End), e.Location,
 					docxEntryStyle{bold: bold, sub: ink, kind: ink, loc: ink, date: ink, first: pp{keepNext: true}}))
@@ -700,11 +749,12 @@ func (d *docx) compact() string {
 	o.cut("projects")
 	if len(d.c.SkillGroups) > 0 || len(nonEmpty(d.c.Skills...)) > 0 {
 		heading(d.titles["skills"])
+		sep := skillSep(st, ", ")
 		if len(d.c.SkillGroups) == 0 {
-			d.add(para(pp{}, run(strings.Join(nonEmpty(d.c.Skills...), ", "), ink)))
+			d.add(para(pp{}, run(strings.Join(nonEmpty(d.c.Skills...), sep), ink)))
 		}
 		for _, g := range d.c.SkillGroups {
-			d.add(para(pp{}, run(g.Label+suffixIf(g.Label, " : "), bold), run(strings.Join(nonEmpty(g.Items...), ", "), ink)))
+			d.add(para(pp{}, run(g.Label+suffixIf(g.Label, " : "), bold), run(strings.Join(nonEmpty(g.Items...), sep), ink)))
 		}
 	}
 	o.cut("skills")
@@ -717,15 +767,19 @@ func (d *docx) compact() string {
 	o.cut("certifications")
 	if len(d.c.Languages) > 0 {
 		heading(d.titles["languages"])
-		var parts []string
-		for _, l := range d.c.Languages {
-			name, level := splitLanguage(l)
-			if level != "" {
-				name += " (" + level + ")"
+		if inlineLanguages(st) {
+			d.add(docxLanguagesInline(d.c.Languages, bold, ink, pp{}))
+		} else {
+			var parts []string
+			for _, l := range d.c.Languages {
+				name, level := splitLanguage(l)
+				if level != "" {
+					name += " (" + level + ")"
+				}
+				parts = append(parts, name)
 			}
-			parts = append(parts, name)
+			d.add(para(pp{}, run(strings.Join(nonEmpty(parts...), " · "), ink)))
 		}
-		d.add(para(pp{}, run(strings.Join(nonEmpty(parts...), " · "), ink)))
 	}
 	o.cut("languages")
 	d.extra(heading, ink, o)
