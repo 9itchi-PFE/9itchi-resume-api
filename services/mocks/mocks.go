@@ -33,6 +33,7 @@ type ResumeRepo struct {
 	BumpVersionFn    func(ctx context.Context, userID, id string) (int, []byte, error)
 	InsertVersionFn  func(ctx context.Context, resumeID string, versionNo int, label string, content []byte) (*db.ResumeVersionMeta, error)
 	ListVersionsFn   func(ctx context.Context, resumeID string) ([]db.ResumeVersionMeta, error)
+	DuplicateFn      func(ctx context.Context, userID, title string, source *db.Resume) (*db.Resume, error)
 	CountByUserFn    func(ctx context.Context, userID string) (int, error)
 	SetParseStatusFn func(ctx context.Context, id, status string) error
 	ApplyParsedFn    func(ctx context.Context, id string, content []byte, language string, report []byte) (bool, error)
@@ -58,6 +59,13 @@ func (m *ResumeRepo) Pin(ctx context.Context, userID, id string) error {
 		return nil
 	}
 	return m.PinFn(ctx, userID, id)
+}
+
+func (m *ResumeRepo) Duplicate(ctx context.Context, userID, title string, source *db.Resume) (*db.Resume, error) {
+	if m.DuplicateFn == nil {
+		return &db.Resume{UserID: userID, Title: title, TemplateID: source.TemplateID, Content: source.Content}, nil
+	}
+	return m.DuplicateFn(ctx, userID, title, source)
 }
 
 func (m *ResumeRepo) CountByUser(ctx context.Context, userID string) (int, error) {
