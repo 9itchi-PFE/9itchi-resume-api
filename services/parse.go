@@ -33,11 +33,11 @@ func (s *resumeService) readUpload(resumeID, format string, data []byte) {
 	}
 	var parsed *core.ParsedResume
 	var err error
+	var text string
 	if format == "jpeg" || format == "png" {
 		// A photo of a CV has no text layer: ai-api reads the picture itself.
 		parsed, err = s.parser.ParseImage(ctx, "image/"+format, data)
 	} else {
-		var text string
 		if text, err = core.ExtractText(format, data); err != nil {
 			fail("extract", err)
 			return
@@ -48,7 +48,20 @@ func (s *resumeService) readUpload(resumeID, format string, data []byte) {
 		fail("parse", err)
 		return
 	}
-	raw, apiErr := encodeContent(withDefaultStyle(parsed.Content))
+	content := withDefaultStyle(parsed.Content)
+	if len(content.SectionOrderKeys) == 0 {
+		content.SectionOrderKeys = core.InferSectionOrder(text, content)
+	}
+	var photo []byte
+	if format != "jpeg" && format != "png" {
+		photo = core.ExtractPhoto(format, data)
+	}
+	if photo == nil && content.Style.ShowPhoto == nil {
+		// The uploaded CV shows no photo: keep it that way instead of an initials placeholder.
+		hide := false
+		content.Style.ShowPhoto = &hide
+	}
+	raw, apiErr := encodeContent(content)
 	if apiErr != nil {
 		fail("encode", apiErr.Error)
 		return
@@ -79,15 +92,11 @@ func (s *resumeService) readUpload(resumeID, format string, data []byte) {
 		utils.Logger.Info("cv reading discarded: edited meanwhile", zap.String("resume_id", resumeID))
 		return
 	}
-	s.importPhoto(ctx, resumeID, format, data)
+	s.importPhoto(ctx, resumeID, photo)
 }
 
 // importPhoto keeps the picture embedded in the uploaded CV as the CV photo, unless the user already set one.
-func (s *resumeService) importPhoto(ctx context.Context, resumeID, format string, data []byte) {
-	if format == "jpeg" || format == "png" {
-		return
-	}
-	photo := core.ExtractPhoto(format, data)
+func (s *resumeService) importPhoto(ctx context.Context, resumeID string, photo []byte) {
 	if photo == nil {
 		return
 	}
