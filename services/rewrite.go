@@ -67,6 +67,10 @@ func (s *rewriteService) Rewrite(ctx context.Context, userID, resumeID string, r
 		h.Write([]byte(p))
 		h.Write([]byte{0})
 	}
+	if req.Goal != "" { // only then, so rewrites cached before goals existed keep their hash
+		h.Write([]byte(req.Goal))
+		h.Write([]byte{0})
+	}
 	hash := hex.EncodeToString(h.Sum(nil))
 
 	found, err := s.repo.Find(ctx, userID, hash)
@@ -86,7 +90,7 @@ func (s *rewriteService) Rewrite(ctx context.Context, userID, resumeID string, r
 	case limit != nil && used >= *limit:
 		return nil, newError(http.StatusPaymentRequired, errRewriteLimit)
 	}
-	suggestions, warnings, err := s.ai.Rewrite(ctx, core.RewriteInput{Section: req.Section, Text: text, Language: language, JobTitle: strings.TrimSpace(req.JobTitle)})
+	suggestions, warnings, err := s.ai.Rewrite(ctx, core.RewriteInput{Section: req.Section, Text: text, Language: language, JobTitle: strings.TrimSpace(req.JobTitle), Goal: req.Goal})
 	if err != nil {
 		utils.Logger.Warn("ai rewrite failed", zap.Error(err))
 		return nil, newError(http.StatusBadGateway, "the AI is unavailable, try again")

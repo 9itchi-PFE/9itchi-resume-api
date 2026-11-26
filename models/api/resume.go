@@ -303,6 +303,8 @@ type RewriteRequest struct {
 	Text     string `json:"text" binding:"required,max=2000"`
 	Language string `json:"language" binding:"omitempty,oneof=fr en ar"`
 	JobTitle string `json:"job_title" binding:"max=200"`
+	// Goal "quantify" (CV check rule quantified_results): each suggestion shows a figure or a [NOMBRE] / [NUMBER] mark.
+	Goal string `json:"goal" binding:"omitempty,oneof=quantify"`
 }
 
 // RewriteResponse is what the AI proposes, with what is left of the plan's rewrites this month (Limit nil: no limit).

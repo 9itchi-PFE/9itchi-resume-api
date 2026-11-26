@@ -59,6 +59,7 @@ type RewriteInput struct {
 	Text     string
 	Language string
 	JobTitle string
+	Goal     string // "quantify" or empty
 }
 
 // Rewriter calls ai-api's internal rewrite route. Implementations never log the text.
