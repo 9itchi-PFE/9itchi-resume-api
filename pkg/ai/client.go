@@ -80,7 +80,7 @@ var _ core.Rewriter = (*Client)(nil)
 
 // Rewrite calls POST /ai/resume/rewrite (internal) and returns its suggestions and warnings. The text is never logged.
 func (c *Client) Rewrite(ctx context.Context, in core.RewriteInput) ([]string, []string, error) {
-	body, err := json.Marshal(map[string]string{"section": in.Section, "text": in.Text, "language": in.Language, "job_title": in.JobTitle})
+	body, err := json.Marshal(map[string]string{"section": in.Section, "text": in.Text, "language": in.Language, "job_title": in.JobTitle, "goal": in.Goal})
 	if err != nil {
 		return nil, nil, err
 	}

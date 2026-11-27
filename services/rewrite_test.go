@@ -193,3 +193,23 @@ func TestRewriteWithoutWarningsGivesEmptyList(t *testing.T) {
 	require.NotNil(t, res.Warnings)
 	assert.Empty(t, res.Warnings)
 }
+
+func TestRewriteGoalIsSentAndCachedApart(t *testing.T) {
+	svc, _, ai := newRewrite(map[string]int{})
+	plain := api.RewriteRequest{Section: "bullet", Text: "Développé un module C++."}
+	quantify := plain
+	quantify.Goal = "quantify"
+
+	_, apiErr := svc.Rewrite(context.Background(), uid, rid, plain)
+	require.Nil(t, apiErr)
+	assert.Empty(t, ai.in.Goal)
+
+	_, apiErr = svc.Rewrite(context.Background(), uid, rid, quantify)
+	require.Nil(t, apiErr)
+	assert.Equal(t, "quantify", ai.in.Goal)
+	assert.Equal(t, 2, ai.calls, "a goal asks the AI again instead of giving back the plain rewrite")
+
+	_, apiErr = svc.Rewrite(context.Background(), uid, rid, quantify)
+	require.Nil(t, apiErr)
+	assert.Equal(t, 2, ai.calls, "the same goal comes from the cache")
+}
