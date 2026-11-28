@@ -13,7 +13,7 @@ CVs: upload + background parse, editor content, versions/history, templates, pho
 
 ## Routes
 - User: `POST /resumes/upload`; `GET|POST /resumes`; `GET|PUT|DELETE /resumes/:id`; `GET|POST /resumes/:id/versions`, `GET /resumes/:id/versions/:versionId`, `POST .../:versionId/restore`; `POST /resumes/:id/rewrite|duplicate|export|ats-check`; `PUT /resumes/:id/editable`; `GET|PUT|DELETE /resumes/:id/photo`; `GET /resumes/:id/files`, `GET|DELETE /resumes/:id/files/:fileId`; `GET /me/downloads`; `GET /templates`, `/templates/:id`.
-- Admin: `GET|POST /admin/templates`, `PUT /admin/templates/:id`; `GET /admin/users/:id/cv|downloads`.
+- Admin: `GET|POST /admin/templates`, `PUT /admin/templates/:id`; `GET /admin/users/:id/cv|downloads|usage` (`usage` = limit + used for CVs, downloads, AI rewrites; `UsageService`).
 - Internal: `GET /internal/resumes/:id/pdf|original`, `POST /internal/letters/pdf` (email-api), `POST /internal/tips/send` (schedule-api), `DELETE /internal/users/:id`.
 
 ## Data, peers, events

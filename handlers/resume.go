@@ -325,6 +325,18 @@ func UserDownloads(svc services.ResumeService) gin.HandlerFunc {
 	}
 }
 
+// UserUsage: GET /admin/users/:id/usage (admin) how much of the plan a student used: CVs, downloads, AI rewrites.
+func UserUsage(svc services.UsageService) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		result, apiErr := svc.UserUsage(c.Request.Context(), c.Param("id"))
+		if apiErr != nil {
+			models.FormatError(c, apiErr)
+			return
+		}
+		c.JSON(http.StatusOK, result)
+	}
+}
+
 // UserCV: GET /admin/users/:id/cv (admin) where the CV of one student stands with the 24 rules.
 func UserCV(svc services.ResumeService) gin.HandlerFunc {
 	return func(c *gin.Context) {
