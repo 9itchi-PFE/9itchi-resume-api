@@ -191,7 +191,7 @@ func InternalResumePDF(svc services.ResumeService) gin.HandlerFunc {
 			models.FormatError(c, apiErr)
 			return
 		}
-		sendFile(c, result)
+		sendNamedFile(c, result)
 	}
 }
 
@@ -203,7 +203,7 @@ func InternalResumeOriginal(svc services.ResumeService) gin.HandlerFunc {
 			models.FormatError(c, apiErr)
 			return
 		}
-		sendFile(c, result)
+		sendNamedFile(c, result)
 	}
 }
 

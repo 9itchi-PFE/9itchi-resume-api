@@ -18,6 +18,7 @@ type Services struct {
 	File     FileService
 	Tip      TipService
 	Rewrite  RewriteService
+	Letter   LetterService
 	Clients  *Clients
 }
 
@@ -44,6 +45,7 @@ func InitServices(config utils.AppConfig, repos *repositories.Repositories) *Ser
 		File:     NewFileService(repos.File, repos.Resume),
 		Tip:      NewTipService(repos.Tip, repos.Resume, repos.Template, events),
 		Rewrite:  NewRewriteService(repos.Rewrite, repos.Resume, clients.Ai, clients.Payments),
+		Letter:   NewLetterService(repos.Resume),
 		Clients:  clients,
 	}
 }

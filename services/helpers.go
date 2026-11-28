@@ -60,3 +60,71 @@ func sanitizeFilename(name string) string {
 	}
 	return out
 }
+
+// cleanStem is a file name without extension made from user text (same rule as email-api's): directory parts
+// and a trailing .pdf/.docx/.doc go, letters (any script), marks, digits, space and `_ - . ( )` stay, other runes
+// become '_', runs of spaces and underscores shrink to their first rune, ` ._-` are trimmed at both ends and the
+// result is cut to 80 runes. Empty gives fallback.
+func cleanStem(in, fallback string) string {
+	in = strings.ReplaceAll(in, "\\", "/")
+	if i := strings.LastIndex(in, "/"); i >= 0 {
+		in = in[i+1:]
+	}
+	in = strings.TrimSpace(in)
+	lower := strings.ToLower(in)
+	for _, ext := range []string{".pdf", ".docx", ".doc"} {
+		if strings.HasSuffix(lower, ext) {
+			in = in[:len(in)-len(ext)]
+			break
+		}
+	}
+	var b strings.Builder
+	var last rune
+	for _, r := range in {
+		if !(unicode.IsLetter(r) || unicode.IsMark(r) || unicode.IsDigit(r) || strings.ContainsRune(" _-.()", r)) {
+			r = '_'
+		}
+		if (r == ' ' || r == '_') && (last == ' ' || last == '_') {
+			continue
+		}
+		b.WriteRune(r)
+		last = r
+	}
+	const cut = " ._-"
+	out := strings.Trim(b.String(), cut)
+	if r := []rune(out); len(r) > 80 {
+		out = strings.Trim(string(r[:80]), cut)
+	}
+	if out == "" {
+		return fallback
+	}
+	return out
+}
+
+// cvStem names the CV attached to an application: its title as the student wrote it, else "prenom_nom", else "CV".
+func cvStem(title, name string) string {
+	return cleanStem(title, exportFilename(name, "CV"))
+}
+
+// originalExt is the extension of an imported file (".pdf", ".docx"...): its stored name's, else its content type's.
+func originalExt(filename, contentType string) string {
+	if i := strings.LastIndex(filename, "."); i >= 0 {
+		ext := strings.ToLower(filename[i:])
+		if len(ext) >= 2 && len(ext) <= 6 && strings.IndexFunc(ext[1:], func(r rune) bool {
+			return !(r >= 'a' && r <= 'z') && !(r >= '0' && r <= '9')
+		}) < 0 {
+			return ext
+		}
+	}
+	switch contentType {
+	case contentTypeDOCX:
+		return ".docx"
+	case "application/msword":
+		return ".doc"
+	case "image/jpeg":
+		return ".jpg"
+	case "image/png":
+		return ".png"
+	}
+	return ".pdf"
+}
