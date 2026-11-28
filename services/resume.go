@@ -640,7 +640,8 @@ func (s *resumeService) InternalResumePDF(ctx context.Context, id string) (*api.
 	if apiErr != nil {
 		return nil, apiErr
 	}
-	return &api.FileContent{Filename: exportFilename(content.Contact.Name, res.Title) + ".pdf", ContentType: contentTypePDF, Data: data}, nil
+	// Named after the CV's title, as the student called it in the CV section.
+	return &api.FileContent{Filename: cvStem(res.Title, content.Contact.Name) + ".pdf", ContentType: contentTypePDF, Data: data}, nil
 }
 
 // InternalResumeOriginal returns the file the student imported for this CV, byte for byte: an application sent
@@ -656,7 +657,16 @@ func (s *resumeService) InternalResumeOriginal(ctx context.Context, id string) (
 	if f == nil {
 		return nil, newError(http.StatusNotFound, "imported file not found")
 	}
-	return &api.FileContent{Filename: f.Filename, ContentType: f.ContentType, Data: f.Data}, nil
+	// The file keeps its own extension but carries the CV's title, like the generated PDF.
+	res, err := s.repo.GetByID(ctx, id)
+	if err != nil {
+		return nil, repoError(err, "resume not found")
+	}
+	if res == nil {
+		return nil, newError(http.StatusNotFound, "resume not found")
+	}
+	name := cvStem(res.Title, mapping.ParseContent(res.Content).Contact.Name) + originalExt(f.Filename, f.ContentType)
+	return &api.FileContent{Filename: name, ContentType: f.ContentType, Data: f.Data}, nil
 }
 
 // announceFirst publishes cv.first_imported when the CV just imported is the student's only one: the step « first

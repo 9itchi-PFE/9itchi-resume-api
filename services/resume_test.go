@@ -373,7 +373,7 @@ func TestInternalResumePDF(t *testing.T) {
 	got, apiErr := f.svc.InternalResumePDF(context.Background(), rid)
 	require.Nil(t, apiErr)
 	assert.Equal(t, "application/pdf", got.ContentType)
-	assert.Equal(t, "ines_mansour.pdf", got.Filename)
+	assert.Equal(t, "My CV.pdf", got.Filename, "the attachment is named after the CV's title")
 	assert.True(t, bytes.HasPrefix(got.Data, []byte("%PDF-")))
 	text, err := core.ExtractText("pdf", got.Data)
 	require.NoError(t, err)
@@ -474,15 +474,29 @@ func TestInternalResumeOriginal(t *testing.T) {
 		assert.Equal(t, rid, id)
 		return &db.ResumeFile{Filename: "cv-ines.pdf", ContentType: "application/pdf", Data: []byte("%PDF-as-imported")}, nil
 	}
-	f.resumes.GetByIDFn = func(context.Context, string) (*db.Resume, error) {
-		t.Fatal("the imported file is returned as it came, the CV built in 9itchi is not read")
-		return nil, nil
+	f.resumes.GetByIDFn = func(_ context.Context, id string) (*db.Resume, error) {
+		return &db.Resume{ID: id, Title: "CV Inès — Data", Content: []byte(`{"contact":{"name":"Inès Mansour"},"summary":"changed since"}`)}, nil
 	}
 	got, apiErr := f.svc.InternalResumeOriginal(context.Background(), rid)
 	require.Nil(t, apiErr)
-	assert.Equal(t, "cv-ines.pdf", got.Filename)
+	assert.Equal(t, "CV Inès Data.pdf", got.Filename, "the CV's title, the imported file's extension")
 	assert.Equal(t, "application/pdf", got.ContentType)
 	assert.Equal(t, []byte("%PDF-as-imported"), got.Data)
+
+	f.files.OriginalFn = func(context.Context, string) (*db.ResumeFile, error) {
+		return &db.ResumeFile{Filename: "upload", ContentType: contentTypeDOCX, Data: []byte("PK")}, nil
+	}
+	f.resumes.GetByIDFn = func(_ context.Context, id string) (*db.Resume, error) {
+		return &db.Resume{ID: id, Title: "", Content: []byte(`{"contact":{"name":"Inès Mansour"}}`)}, nil
+	}
+	got, apiErr = f.svc.InternalResumeOriginal(context.Background(), rid)
+	require.Nil(t, apiErr)
+	assert.Equal(t, "ines_mansour.docx", got.Filename, "no title: prenom_nom, extension from the content type")
+
+	f.resumes.GetByIDFn = func(context.Context, string) (*db.Resume, error) { return nil, assert.AnError }
+	_, apiErr = f.svc.InternalResumeOriginal(context.Background(), rid)
+	require.NotNil(t, apiErr)
+	assert.Equal(t, http.StatusInternalServerError, apiErr.Code)
 
 	f.files.OriginalFn = func(context.Context, string) (*db.ResumeFile, error) { return nil, assert.AnError }
 	_, apiErr = f.svc.InternalResumeOriginal(context.Background(), rid)

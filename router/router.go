@@ -71,6 +71,7 @@ func initializeRoutes(r *gin.Engine, services *services.Services) {
 		internalGroup.GET("/internal/resumes/:id/pdf", handlers.InternalResumePDF(services.Resume))
 		internalGroup.GET("/internal/resumes/:id/original", handlers.InternalResumeOriginal(services.Resume))
 		internalGroup.POST("/internal/tips/send", handlers.SendTips(services.Tip))
+		internalGroup.POST("/internal/letters/pdf", handlers.LetterPDF(services.Letter))
 	}
 
 	// Fallback

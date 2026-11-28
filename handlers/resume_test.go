@@ -191,7 +191,7 @@ func TestInternalResumePDFHandler(t *testing.T) {
 	r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/internal/resumes/x/pdf", nil))
 	assert.Equal(t, http.StatusOK, w.Code)
 	assert.Equal(t, "application/pdf", w.Header().Get("Content-Type"))
-	assert.Equal(t, `attachment; filename=cv.pdf`, w.Header().Get("Content-Disposition"))
+	assert.Equal(t, `attachment; filename="cv.pdf"; filename*=UTF-8''cv.pdf`, w.Header().Get("Content-Disposition"))
 	assert.Equal(t, "%PDF-1", w.Body.String())
 
 	svc.pdf = func() (*api.FileContent, *models.ApiError) {
@@ -233,7 +233,7 @@ func TestInternalResumeOriginalHandler(t *testing.T) {
 	r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/internal/resumes/x/original", nil))
 	assert.Equal(t, http.StatusOK, w.Code)
 	assert.Equal(t, "application/vnd.openxmlformats-officedocument.wordprocessingml.document", w.Header().Get("Content-Type"))
-	assert.Equal(t, `attachment; filename="mon cv.docx"`, w.Header().Get("Content-Disposition"))
+	assert.Equal(t, `attachment; filename="mon cv.docx"; filename*=UTF-8''mon%20cv.docx`, w.Header().Get("Content-Disposition"))
 	assert.Equal(t, "PK", w.Body.String())
 
 	svc.pdf = func() (*api.FileContent, *models.ApiError) {
