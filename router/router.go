@@ -61,6 +61,7 @@ func initializeRoutes(r *gin.Engine, services *services.Services) {
 		adminGroup.PUT("/admin/templates/:id", handlers.UpdateTemplate(services.Template))
 		adminGroup.GET("/admin/users/:id/cv", handlers.UserCV(services.Resume))
 		adminGroup.GET("/admin/users/:id/downloads", handlers.UserDownloads(services.Resume))
+		adminGroup.GET("/admin/users/:id/usage", handlers.UserUsage(services.Usage))
 	}
 
 	// internal endpoints
