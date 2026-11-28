@@ -81,7 +81,7 @@ func cleanStem(in, fallback string) string {
 	var b strings.Builder
 	var last rune
 	for _, r := range in {
-		if !(unicode.IsLetter(r) || unicode.IsMark(r) || unicode.IsDigit(r) || strings.ContainsRune(" _-.()", r)) {
+		if !unicode.IsLetter(r) && !unicode.IsMark(r) && !unicode.IsDigit(r) && !strings.ContainsRune(" _-.()", r) {
 			r = '_'
 		}
 		if (r == ' ' || r == '_') && (last == ' ' || last == '_') {
@@ -111,7 +111,7 @@ func originalExt(filename, contentType string) string {
 	if i := strings.LastIndex(filename, "."); i >= 0 {
 		ext := strings.ToLower(filename[i:])
 		if len(ext) >= 2 && len(ext) <= 6 && strings.IndexFunc(ext[1:], func(r rune) bool {
-			return !(r >= 'a' && r <= 'z') && !(r >= '0' && r <= '9')
+			return (r < 'a' || r > 'z') && (r < '0' || r > '9')
 		}) < 0 {
 			return ext
 		}
